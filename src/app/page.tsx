@@ -17,7 +17,7 @@ import { events as initialEvents, initialTasks, stickyNotes, teachers } from "@/
 import { balanceTaskAssignments } from "@/lib/decisionSupport";
 import { getDaysLeft } from "@/lib/reminders";
 import { generateEventTemplateTasks, savedEventTemplates } from "@/lib/templates";
-import { isSupabaseConfigured, loadCloudData, saveCloudData } from "@/lib/supabaseClient";
+import { deleteCloudTask, isSupabaseConfigured, loadCloudData, saveCloudData } from "@/lib/supabaseClient";
 import type { Event, StickyNote, Task } from "@/lib/types";
 import type { Priority, StickyColor } from "@/lib/types";
 
@@ -95,19 +95,7 @@ function normalizeTask(task: Partial<Task>): Task {
 
 function mergeStoredTasks(storedTasks: Task[] | null) {
   if (!storedTasks) return initialTasks;
-
-  const storedById = new Map(storedTasks.map((task) => [task.id, normalizeTask(task)]));
-  const mergedDefaults = initialTasks.map((task) => ({
-    ...task,
-    ...storedById.get(task.id),
-    comments: storedById.get(task.id)?.comments ?? task.comments,
-    attachments: storedById.get(task.id)?.attachments ?? task.attachments
-  }));
-  const customTasks = storedTasks
-    .filter((task) => !initialTasks.some((initialTask) => initialTask.id === task.id))
-    .map(normalizeTask);
-
-  return [...customTasks, ...mergedDefaults];
+  return storedTasks.map(normalizeTask);
 }
 
 function normalizeEvent(event: Partial<Event>): Event {
@@ -125,17 +113,7 @@ function normalizeEvent(event: Partial<Event>): Event {
 
 function mergeStoredEvents(storedEvents: Event[] | null) {
   if (!storedEvents) return initialEvents;
-
-  const storedById = new Map(storedEvents.map((event) => [event.id, normalizeEvent(event)]));
-  const mergedDefaults = initialEvents.map((event) => ({
-    ...event,
-    ...storedById.get(event.id)
-  }));
-  const customEvents = storedEvents
-    .filter((event) => !initialEvents.some((initialEvent) => initialEvent.id === event.id))
-    .map(normalizeEvent);
-
-  return [...mergedDefaults, ...customEvents];
+  return storedEvents.map(normalizeEvent);
 }
 
 function mergeUniqueById<T extends { id: string }>(primary: T[], secondary: T[]) {
@@ -224,9 +202,12 @@ export default function Home() {
         try {
           const cloudData = await loadCloudData();
           if (cloudData) {
-            const cloudTasks = cloudData.tasks.length ? cloudData.tasks : initialTasks;
-            const cloudEvents = cloudData.events.length ? cloudData.events : initialEvents;
-            const cloudNotes = cloudData.notes.length ? cloudData.notes : stickyNotes;
+            const hasCloudData = Boolean(
+              cloudData.tasks.length || cloudData.events.length || cloudData.notes.length
+            );
+            const cloudTasks = hasCloudData ? cloudData.tasks : initialTasks;
+            const cloudEvents = hasCloudData ? cloudData.events : initialEvents;
+            const cloudNotes = hasCloudData ? cloudData.notes : stickyNotes;
             const nextTasks = hasLocalData ? mergeUniqueById(localTasks, cloudTasks) : cloudTasks;
             const nextEvents = hasLocalData ? mergeUniqueById(localEvents, cloudEvents) : cloudEvents;
             const nextNotes = hasLocalData ? mergeUniqueById(localNotes, cloudNotes) : cloudNotes;
@@ -332,6 +313,56 @@ export default function Home() {
       )
     );
     setActionMessage("截止日已更新。");
+  }
+
+  function handleUpdateTask(taskId: string, changes: Partial<Task>) {
+    setTasks((current) => {
+      const nextTasks = current.map((task) =>
+        task.id === taskId
+          ? {
+              ...task,
+              ...changes,
+              assignees: changes.assignees ?? changes.ownerIds ?? task.assignees,
+              ownerIds: changes.ownerIds ?? changes.assignees ?? task.ownerIds,
+              updatedAt: getTodayString()
+            }
+          : task
+      );
+      writeStoredArray(TASKS_STORAGE_KEY, nextTasks);
+      if (dataSource === "cloud") {
+        void saveCloudData({ events, tasks: nextTasks, notes }).catch(() => {
+          setActionMessage("雲端保存暫時失敗，資料仍保存在本機瀏覽器。");
+        });
+      }
+      return nextTasks;
+    });
+    setSelectedTaskId(taskId);
+    setActionMessage("任務已更新，並同步到看板、摘要與教師端。");
+  }
+
+  function handleDeleteTask(taskId: string) {
+    setTasks((current) => {
+      const nextTasks = current.filter((task) => task.id !== taskId);
+      writeStoredArray(TASKS_STORAGE_KEY, nextTasks);
+      setSelectedTaskId((currentSelectedId) =>
+        currentSelectedId === taskId ? nextTasks[0]?.id ?? "" : currentSelectedId
+      );
+      if (dataSource === "cloud") {
+        void deleteCloudTask(taskId).catch(() => {
+          setActionMessage("雲端刪除暫時失敗，已先從本機畫面移除。");
+        });
+      }
+      return nextTasks;
+    });
+    setEvents((current) => {
+      const nextEvents = current.map((event) => ({
+        ...event,
+        taskIds: event.taskIds.filter((id) => id !== taskId)
+      }));
+      writeStoredArray(EVENTS_STORAGE_KEY, nextEvents);
+      return nextEvents;
+    });
+    setActionMessage("任務已刪除，並同步更新看板與摘要。");
   }
 
   function handleQuickComment(taskId: string, body: string) {
@@ -785,6 +816,8 @@ export default function Home() {
                   onDueDateChange={handleDueDateChange}
                   onQuickComment={handleQuickComment}
                   onRemind={handleRemind}
+                  onUpdateTask={handleUpdateTask}
+                  onDeleteTask={handleDeleteTask}
                   onOpenTask={setSelectedTaskId}
                 />
                 <WorkloadPanel teachers={teachers} tasks={tasks} />

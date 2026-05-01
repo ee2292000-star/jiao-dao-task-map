@@ -13,6 +13,8 @@ type KanbanBoardProps = {
   onDueDateChange?: (taskId: string, dueDate: string) => void;
   onQuickComment?: (taskId: string, body: string) => void;
   onRemind?: (message: string) => void;
+  onUpdateTask?: (taskId: string, changes: Partial<Task>) => void;
+  onDeleteTask?: (taskId: string) => void;
   onOpenTask: (taskId: string) => void;
 };
 
@@ -31,6 +33,8 @@ export function KanbanBoard({
   onDueDateChange,
   onQuickComment,
   onRemind,
+  onUpdateTask,
+  onDeleteTask,
   onOpenTask
 }: KanbanBoardProps) {
   return (
@@ -77,6 +81,8 @@ export function KanbanBoard({
                   onDueDateChange={onDueDateChange}
                   onQuickComment={onQuickComment}
                   onRemind={onRemind}
+                  onUpdate={onUpdateTask}
+                  onDelete={onDeleteTask}
                   onOpen={onOpenTask}
                   priorityScore={calculatePriorityScore(task, {
                     tasks,

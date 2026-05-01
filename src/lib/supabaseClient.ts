@@ -203,3 +203,10 @@ export async function saveCloudData(params: {
     .upsert(params.notes.map(toStickyNoteRow), { onConflict: "id" });
   if (notesError) throw notesError;
 }
+
+export async function deleteCloudTask(taskId: string) {
+  if (!supabase) return;
+
+  const { error } = await supabase.from("tasks").delete().eq("id", taskId);
+  if (error) throw error;
+}

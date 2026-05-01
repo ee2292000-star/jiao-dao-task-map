@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Task, Teacher } from "@/lib/types";
 import { getDaysLeft } from "@/lib/reminders";
 import { getPriorityLabel, getStatusLabel } from "@/lib/decisionSupport";
@@ -17,6 +17,8 @@ type TaskCardProps = {
   onQuickComment?: (taskId: string, body: string) => void;
   onRemind?: (message: string) => void;
   onOpen?: (taskId: string) => void;
+  onUpdate?: (taskId: string, changes: Partial<Task>) => void;
+  onDelete?: (taskId: string) => void;
   priorityScore?: number;
   priorityReasons?: string[];
 };
@@ -32,21 +34,63 @@ export function TaskCard({
   onQuickComment,
   onRemind,
   onOpen,
+  onUpdate,
+  onDelete,
   priorityScore,
   priorityReasons = []
 }: TaskCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [comment, setComment] = useState("");
+  const [draft, setDraft] = useState({
+    title: task.title,
+    description: task.description,
+    ownerId: task.ownerIds[0] ?? "",
+    dueDate: task.dueDate,
+    priority: task.priority,
+    status: task.status
+  });
   const owners = teachers.filter((teacher) => task.ownerIds.includes(teacher.id));
   const daysLeft = getDaysLeft(task.dueDate);
   const isOverdue = daysLeft < 0 && task.status !== "done";
   const activeTeacherOptions = teachers.filter((teacher) => teacher.role !== "主任");
+
+  useEffect(() => {
+    setDraft({
+      title: task.title,
+      description: task.description,
+      ownerId: task.ownerIds[0] ?? "",
+      dueDate: task.dueDate,
+      priority: task.priority,
+      status: task.status
+    });
+  }, [task]);
 
   function submitComment() {
     const body = comment.trim();
     if (!body) return;
     onQuickComment?.(task.id, body);
     setComment("");
+  }
+
+  function saveEdit() {
+    const title = draft.title.trim();
+    if (!title) return;
+    onUpdate?.(task.id, {
+      title,
+      description: draft.description,
+      assignees: draft.ownerId ? [draft.ownerId] : [],
+      ownerIds: draft.ownerId ? [draft.ownerId] : [],
+      dueDate: draft.dueDate,
+      priority: draft.priority,
+      status: draft.status
+    });
+    setEditing(false);
+  }
+
+  function confirmDelete() {
+    if (!window.confirm("確定要刪除此任務嗎？此動作無法復原。")) return;
+    onDelete?.(task.id);
   }
 
   return (
@@ -68,17 +112,41 @@ export function TaskCard({
             <p className="mt-2 text-base leading-relaxed text-stone-600">{task.description}</p>
           )}
         </button>
-        <span
-          className={`shrink-0 rounded-md px-3 py-1 text-base font-black ${
-            task.status === "done"
-              ? "bg-forest-100 text-forest-700"
-              : task.status === "doing"
-                ? "bg-blue-100 text-blue-800"
-                : "bg-stone-100 text-stone-700"
-          }`}
-        >
-          {getStatusLabel(task.status)}
-        </span>
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <span
+            className={`rounded-md px-3 py-1 text-base font-black ${
+              task.status === "done"
+                ? "bg-forest-100 text-forest-700"
+                : task.status === "doing"
+                  ? "bg-blue-100 text-blue-800"
+                  : "bg-stone-100 text-stone-700"
+            }`}
+          >
+            {getStatusLabel(task.status)}
+          </span>
+          {(onUpdate || onDelete) && (
+            <div className="flex gap-2">
+              {onUpdate && (
+                <button
+                  className="rounded-md bg-forest-50 px-2 py-1 text-sm font-black text-forest-800 hover:bg-forest-100"
+                  onClick={() => setEditing((value) => !value)}
+                  type="button"
+                >
+                  編輯
+                </button>
+              )}
+              {onDelete && (
+                <button
+                  className="rounded-md bg-red-50 px-2 py-1 text-sm font-black text-red-700 hover:bg-red-100"
+                  onClick={confirmDelete}
+                  type="button"
+                >
+                  刪除
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -163,6 +231,81 @@ export function TaskCard({
           催辦
         </ActionButton>
       </ActionBar>
+
+      {editing && (
+        <div className="mt-3 rounded-lg border border-forest-100 bg-warm p-3">
+          <div className="grid gap-3">
+            <input
+              className="rounded-md border border-forest-100 bg-white px-3 py-2 text-base font-bold"
+              value={draft.title}
+              onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))}
+              aria-label="任務名稱"
+              placeholder="任務名稱"
+            />
+            <textarea
+              className="min-h-24 rounded-md border border-forest-100 bg-white px-3 py-2 text-base font-bold"
+              value={draft.description}
+              onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))}
+              aria-label="任務說明"
+              placeholder="任務說明"
+            />
+            <div className="grid gap-2 md:grid-cols-4">
+              <select
+                className="rounded-md border border-forest-100 bg-white px-3 py-2 text-base font-bold"
+                value={draft.ownerId}
+                onChange={(event) => setDraft((current) => ({ ...current, ownerId: event.target.value }))}
+                aria-label="負責教師"
+              >
+                <option value="">先不指派</option>
+                {activeTeacherOptions.map((teacher) => (
+                  <option key={teacher.id} value={teacher.id}>
+                    {teacher.name}
+                  </option>
+                ))}
+              </select>
+              <input
+                className="rounded-md border border-forest-100 bg-white px-3 py-2 text-base font-bold"
+                type="date"
+                value={draft.dueDate}
+                onChange={(event) => setDraft((current) => ({ ...current, dueDate: event.target.value }))}
+                aria-label="截止日期"
+              />
+              <select
+                className="rounded-md border border-forest-100 bg-white px-3 py-2 text-base font-bold"
+                value={draft.priority}
+                onChange={(event) =>
+                  setDraft((current) => ({ ...current, priority: event.target.value as Task["priority"] }))
+                }
+                aria-label="優先順序"
+              >
+                <option value="low">低</option>
+                <option value="normal">一般</option>
+                <option value="high">高優先</option>
+              </select>
+              <select
+                className="rounded-md border border-forest-100 bg-white px-3 py-2 text-base font-bold"
+                value={draft.status}
+                onChange={(event) =>
+                  setDraft((current) => ({ ...current, status: event.target.value as Task["status"] }))
+                }
+                aria-label="任務狀態"
+              >
+                <option value="todo">待辦</option>
+                <option value="doing">進行中</option>
+                <option value="done">已完成</option>
+              </select>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <ActionButton tone="primary" onClick={saveEdit}>
+                儲存
+              </ActionButton>
+              <ActionButton tone="quiet" onClick={() => setEditing(false)}>
+                取消
+              </ActionButton>
+            </div>
+          </div>
+        </div>
+      )}
 
       {expanded && (
         <div className="mt-3 rounded-lg border border-forest-100 bg-warm p-3">
