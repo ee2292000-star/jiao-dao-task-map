@@ -1,6 +1,10 @@
 import type { Event, StickyNote, Task, Teacher } from "./types";
 import { getDaysLeft } from "./reminders";
 
+function getTodayString() {
+  return new Date().toLocaleDateString("sv-SE");
+}
+
 export type PriorityContext = {
   tasks: Task[];
   teachers: Teacher[];
@@ -312,7 +316,7 @@ export function balanceTaskAssignments(tasks: Task[], teachers: Teacher[]) {
     if (currentOwner) activeCounts.set(currentOwner, Math.max(0, currentCount - 1));
     activeCounts.set(leastLoaded[0], leastLoaded[1] + 1);
 
-    return { ...task, assignees: [leastLoaded[0]], ownerIds: [leastLoaded[0]], updatedAt: "2026-05-01" };
+    return { ...task, assignees: [leastLoaded[0]], ownerIds: [leastLoaded[0]], updatedAt: getTodayString() };
   });
 }
 

@@ -58,6 +58,16 @@ function writeStoredArray<T>(key: string, value: T[]) {
   }
 }
 
+function getTodayString() {
+  return new Date().toLocaleDateString("sv-SE");
+}
+
+function addDaysString(days: number) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toLocaleDateString("sv-SE");
+}
+
 function normalizeTask(task: Partial<Task>): Task {
   const ownerIds = task.ownerIds ?? task.assignees ?? [];
   const assignees = task.assignees ?? ownerIds;
@@ -74,10 +84,10 @@ function normalizeTask(task: Partial<Task>): Task {
     isCritical: task.isCritical ?? task.isKeyTask ?? false,
     isBlocked: task.isBlocked ?? false,
     isKeyTask: task.isKeyTask ?? task.isCritical ?? false,
-    dueDate: task.dueDate ?? "2026-05-07",
+    dueDate: task.dueDate ?? addDaysString(6),
     startDate: task.startDate,
-    createdAt: task.createdAt ?? "2026-05-01",
-    updatedAt: task.updatedAt ?? "2026-05-01",
+    createdAt: task.createdAt ?? getTodayString(),
+    updatedAt: task.updatedAt ?? getTodayString(),
     comments: task.comments ?? [],
     attachments: task.attachments ?? []
   };
@@ -105,7 +115,7 @@ function normalizeEvent(event: Partial<Event>): Event {
     id: event.id ?? `event-${Date.now()}`,
     name: event.name ?? "未命名活動",
     month: event.month ?? "未設定",
-    startDate: event.startDate ?? "2026-05-01",
+    startDate: event.startDate ?? getTodayString(),
     endDate: event.endDate ?? "2026-06-30",
     taskIds: event.taskIds ?? [],
     templateId: event.templateId,
@@ -268,7 +278,7 @@ export default function Home() {
   function handleStatusChange(taskId: string, status: Task["status"]) {
     setTasks((current) =>
       current.map((task) =>
-        task.id === taskId ? { ...task, status, updatedAt: "2026-05-01" } : task
+        task.id === taskId ? { ...task, status, updatedAt: getTodayString() } : task
       )
     );
   }
@@ -276,7 +286,7 @@ export default function Home() {
   function handlePriorityChange(taskId: string, priority: Task["priority"]) {
     setTasks((current) =>
       current.map((task) =>
-        task.id === taskId ? { ...task, priority, updatedAt: "2026-05-01" } : task
+        task.id === taskId ? { ...task, priority, updatedAt: getTodayString() } : task
       )
     );
   }
@@ -289,7 +299,7 @@ export default function Home() {
               ...task,
               assignees: ownerId ? [ownerId] : [],
               ownerIds: ownerId ? [ownerId] : [],
-              updatedAt: "2026-05-01"
+              updatedAt: getTodayString()
             }
           : task
       )
@@ -300,7 +310,7 @@ export default function Home() {
   function handleDueDateChange(taskId: string, dueDate: string) {
     setTasks((current) =>
       current.map((task) =>
-        task.id === taskId ? { ...task, dueDate, updatedAt: "2026-05-01" } : task
+        task.id === taskId ? { ...task, dueDate, updatedAt: getTodayString() } : task
       )
     );
     setActionMessage("截止日已更新。");
@@ -312,14 +322,14 @@ export default function Home() {
         task.id === taskId
           ? {
               ...task,
-              updatedAt: "2026-05-01",
+              updatedAt: getTodayString(),
               comments: [
                 ...task.comments,
                 {
                   id: `comment-${Date.now()}`,
                   authorId: "t1",
                   body,
-                  createdAt: "2026-05-01"
+                  createdAt: getTodayString()
                 }
               ]
             }
@@ -339,7 +349,7 @@ export default function Home() {
         if (task.id !== taskId) return task;
         const nextDate = new Date(`${task.dueDate}T00:00:00`);
         nextDate.setDate(nextDate.getDate() + 2);
-        return { ...task, dueDate: nextDate.toISOString().slice(0, 10), updatedAt: "2026-05-01" };
+        return { ...task, dueDate: nextDate.toISOString().slice(0, 10), updatedAt: getTodayString() };
       })
     );
     setActionMessage("已延後 2 天，提醒暫時降壓。");
@@ -380,9 +390,9 @@ export default function Home() {
       priority: "normal",
       isCritical: false,
       isBlocked: false,
-      dueDate: note.dueDate ?? "2026-05-07",
-      createdAt: "2026-05-01",
-      updatedAt: "2026-05-01",
+      dueDate: note.dueDate ?? addDaysString(6),
+      createdAt: getTodayString(),
+      updatedAt: getTodayString(),
       comments: [],
       attachments: []
     };
@@ -416,8 +426,8 @@ export default function Home() {
       isBlocked: false,
       isKeyTask: input.isCritical,
       dueDate: input.dueDate,
-      createdAt: "2026-05-01",
-      updatedAt: "2026-05-01",
+      createdAt: getTodayString(),
+      updatedAt: getTodayString(),
       comments: [],
       attachments: []
     };
@@ -452,7 +462,7 @@ export default function Home() {
       assigneeId: input.assigneeId || undefined,
       dueDate: input.dueDate,
       done: false,
-      createdAt: "2026-05-01"
+      createdAt: getTodayString()
     };
 
     setNotes((current) => {
@@ -489,8 +499,8 @@ export default function Home() {
     }).map((task) => ({
       ...task,
       status: "todo" as const,
-      createdAt: "2026-05-01",
-      updatedAt: "2026-05-01"
+      createdAt: getTodayString(),
+      updatedAt: getTodayString()
     }));
     const newEvent: Event = {
       id: eventId,
@@ -557,8 +567,8 @@ export default function Home() {
         ownerIds: [],
         isBlocked: false,
         dueDate: nextDue.toISOString().slice(0, 10),
-        createdAt: "2026-05-01",
-        updatedAt: "2026-05-01",
+        createdAt: getTodayString(),
+        updatedAt: getTodayString(),
         comments: [],
         attachments: []
       };
@@ -691,7 +701,9 @@ export default function Home() {
               />
               <div className="rounded-lg bg-white px-5 py-3 text-right">
                 <p className="text-lg font-bold text-stone-600">今日</p>
-                <p className="text-3xl font-black text-forest-700">2026/05/01</p>
+                <p className="text-3xl font-black text-forest-700">
+                  {getTodayString().replaceAll("-", "/")}
+                </p>
               </div>
             </div>
           </header>

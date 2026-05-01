@@ -34,7 +34,15 @@ type QuickCreatePanelProps = {
   onCreateEvent: (input: QuickEventInput) => void;
 };
 
-const today = "2026-05-01";
+function getTodayString() {
+  return new Date().toLocaleDateString("sv-SE");
+}
+
+function addDaysString(days: number) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toLocaleDateString("sv-SE");
+}
 
 export function QuickCreatePanel({
   teachers,
@@ -44,18 +52,20 @@ export function QuickCreatePanel({
   onCreateEvent
 }: QuickCreatePanelProps) {
   const teacherOptions = teachers.filter((teacher) => teacher.role !== "主任");
+  const today = getTodayString();
+  const defaultDueDate = addDaysString(6);
   const [taskInput, setTaskInput] = useState<QuickTaskInput>({
     title: "",
     description: "",
     assigneeId: "",
-    dueDate: "2026-05-07",
+    dueDate: defaultDueDate,
     priority: "normal",
     isCritical: false
   });
   const [noteInput, setNoteInput] = useState<QuickNoteInput>({
     body: "",
     assigneeId: "",
-    dueDate: "2026-05-07",
+    dueDate: defaultDueDate,
     color: "yellow"
   });
   const [eventInput, setEventInput] = useState<QuickEventInput>({
@@ -71,7 +81,7 @@ export function QuickCreatePanel({
       title: "",
       description: "",
       assigneeId: "",
-      dueDate: "2026-05-07",
+      dueDate: defaultDueDate,
       priority: "normal",
       isCritical: false
     });
@@ -83,7 +93,7 @@ export function QuickCreatePanel({
     setNoteInput({
       body: "",
       assigneeId: "",
-      dueDate: "2026-05-07",
+      dueDate: defaultDueDate,
       color: "yellow"
     });
   }

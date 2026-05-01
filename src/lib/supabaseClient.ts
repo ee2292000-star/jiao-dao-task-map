@@ -10,6 +10,10 @@ export const supabase = isSupabaseConfigured
   ? createClient(supabaseUrl!, supabaseAnonKey!)
   : null;
 
+function getTodayString() {
+  return new Date().toLocaleDateString("sv-SE");
+}
+
 type TaskRow = {
   id: string;
   title: string;
@@ -69,8 +73,8 @@ function fromTaskRow(row: TaskRow): Task {
     isKeyTask: row.is_key_task,
     dueDate: row.due_date,
     startDate: row.start_date ?? undefined,
-    createdAt: row.created_at?.slice(0, 10) ?? "2026-05-01",
-    updatedAt: row.updated_at?.slice(0, 10) ?? "2026-05-01",
+    createdAt: row.created_at?.slice(0, 10) ?? getTodayString(),
+    updatedAt: row.updated_at?.slice(0, 10) ?? getTodayString(),
     comments: row.comments ?? [],
     attachments: row.attachments ?? []
   };
@@ -134,7 +138,7 @@ function fromStickyNoteRow(row: StickyNoteRow): StickyNote {
     dueDate: row.due_date ?? undefined,
     done: row.done,
     convertedTaskId: row.converted_task_id ?? undefined,
-    createdAt: row.created_at?.slice(0, 10) ?? "2026-05-01"
+    createdAt: row.created_at?.slice(0, 10) ?? getTodayString()
   };
 }
 
@@ -150,7 +154,7 @@ function toStickyNoteRow(note: StickyNote): StickyNoteRow {
     done: note.done,
     converted_task_id: note.convertedTaskId ?? null,
     created_at: note.createdAt,
-    updated_at: "2026-05-01"
+    updated_at: getTodayString()
   };
 }
 
