@@ -17,6 +17,7 @@ import { events as initialEvents, initialTasks, stickyNotes, teachers } from "@/
 import { balanceTaskAssignments } from "@/lib/decisionSupport";
 import { getDaysLeft } from "@/lib/reminders";
 import { generateEventTemplateTasks, savedEventTemplates } from "@/lib/templates";
+import { isSupabaseConfigured, loadCloudData, saveCloudData } from "@/lib/supabaseClient";
 import type { Event, StickyNote, Task } from "@/lib/types";
 import type { Priority, StickyColor } from "@/lib/types";
 
@@ -159,6 +160,7 @@ export default function Home() {
   const [selectedTaskId, setSelectedTaskId] = useState(initialTasks[0]?.id ?? "");
   const [actionMessage, setActionMessage] = useState("");
   const [isHydrated, setIsHydrated] = useState(false);
+  const [dataSource, setDataSource] = useState<"cloud" | "local">("local");
 
   const activeTeacher = useMemo(
     () => teachers.find((teacher) => teacher.id === activeTeacherId) ?? teachers[0],
@@ -168,18 +170,54 @@ export default function Home() {
   const selectedTask = tasks.find((task) => task.id === selectedTaskId);
 
   useEffect(() => {
-    const storedTasks = readStoredArray<Task>(TASKS_STORAGE_KEY);
-    const storedNotes = readStoredArray<StickyNote>(NOTES_STORAGE_KEY);
-    const storedEvents = readStoredArray<Event>(EVENTS_STORAGE_KEY);
-    const nextTasks = mergeStoredTasks(storedTasks);
-    const nextEvents = mergeStoredEvents(storedEvents);
+    async function hydrateData() {
+      if (isSupabaseConfigured) {
+        try {
+          const cloudData = await loadCloudData();
+          if (cloudData) {
+            const nextTasks = cloudData.tasks.length ? cloudData.tasks : initialTasks;
+            const nextEvents = cloudData.events.length ? cloudData.events : initialEvents;
+            const nextNotes = cloudData.notes.length ? cloudData.notes : stickyNotes;
 
-    setTasks(nextTasks);
-    setEvents(nextEvents);
-    if (storedNotes) setNotes(storedNotes);
-    setSelectedTaskId(nextTasks[0]?.id ?? "");
-    setIsHydrated(true);
-    if (storedTasks || storedNotes || storedEvents) setActionMessage("已載入本機保存資料。");
+            setTasks(nextTasks);
+            setEvents(nextEvents);
+            setNotes(nextNotes);
+            setSelectedTaskId(nextTasks[0]?.id ?? "");
+            setDataSource("cloud");
+            setActionMessage("已連上 Supabase 雲端資料庫。");
+            setIsHydrated(true);
+
+            if (!cloudData.tasks.length && !cloudData.events.length) {
+              await saveCloudData({
+                events: initialEvents,
+                tasks: initialTasks,
+                notes: stickyNotes
+              });
+              setActionMessage("已建立雲端初始資料。");
+            }
+            return;
+          }
+        } catch {
+          setActionMessage("雲端資料庫暫時無法讀取，已改用本機保存。");
+        }
+      }
+
+      const storedTasks = readStoredArray<Task>(TASKS_STORAGE_KEY);
+      const storedNotes = readStoredArray<StickyNote>(NOTES_STORAGE_KEY);
+      const storedEvents = readStoredArray<Event>(EVENTS_STORAGE_KEY);
+      const nextTasks = mergeStoredTasks(storedTasks);
+      const nextEvents = mergeStoredEvents(storedEvents);
+
+      setTasks(nextTasks);
+      setEvents(nextEvents);
+      if (storedNotes) setNotes(storedNotes);
+      setSelectedTaskId(nextTasks[0]?.id ?? "");
+      setDataSource("local");
+      setIsHydrated(true);
+      if (storedTasks || storedNotes || storedEvents) setActionMessage("已載入本機保存資料。");
+    }
+
+    void hydrateData();
   }, []);
 
   useEffect(() => {
@@ -196,6 +234,18 @@ export default function Home() {
     if (!isHydrated) return;
     window.localStorage.setItem(EVENTS_STORAGE_KEY, JSON.stringify(events));
   }, [isHydrated, events]);
+
+  useEffect(() => {
+    if (!isHydrated || dataSource !== "cloud") return;
+
+    const timeout = window.setTimeout(() => {
+      void saveCloudData({ events, tasks, notes }).catch(() => {
+        setActionMessage("雲端保存暫時失敗，資料仍保存在本機瀏覽器。");
+      });
+    }, 500);
+
+    return () => window.clearTimeout(timeout);
+  }, [dataSource, events, isHydrated, notes, tasks]);
 
   function handleStatusChange(taskId: string, status: Task["status"]) {
     setTasks((current) =>
@@ -557,7 +607,9 @@ export default function Home() {
           <div className="mt-4 rounded-lg bg-forest-700 p-4">
             <p className="text-lg font-bold text-forest-50">本機資料</p>
             <p className="mt-1 text-base font-bold text-forest-100">
-              操作會自動保存在這台電腦的瀏覽器。
+              {dataSource === "cloud"
+                ? "目前已連接 Supabase，資料會同步到雲端。"
+                : "操作會自動保存在這台電腦的瀏覽器。"}
             </p>
             <button
               className="mt-3 w-full rounded-md bg-rice px-4 py-2 text-base font-black text-ink"
