@@ -173,6 +173,24 @@ function filterTasks(tasks: Task[], filter: string) {
   return tasks;
 }
 
+function taskMatchesFilter(task: Task, filter: string) {
+  return filterTasks([task], filter).length > 0;
+}
+
+function getFilterLabel(filter: string) {
+  if (filter === "all") return "全部任務";
+  if (filter === "week") return "本週到期";
+  if (filter === "done") return "已完成";
+  if (filter === "doing") return "進行中";
+  if (filter === "overdue") return "逾期任務";
+  if (filter === "unassigned") return "未指派任務";
+  if (filter === "comments") return "未回覆留言";
+  if (filter === "confirm") return "未確認事項";
+  if (filter.startsWith("teacher:")) return "教師任務篩選";
+  if (filter.startsWith("event:")) return "活動任務篩選";
+  return "目前篩選條件";
+}
+
 export default function Home() {
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [notes, setNotes] = useState<StickyNote[]>(stickyNotes);
@@ -443,8 +461,11 @@ export default function Home() {
       return nextTasks;
     });
     setSelectedTaskId(taskId);
-    setFilter("all");
-    setActionMessage("已新增任務，並加入自動排序與看板。");
+    setActionMessage(
+      taskMatchesFilter(newTask, filter)
+        ? "已新增任務，並同步到任務看板、今日重點與教師端。"
+        : `任務已新增，但目前篩選條件「${getFilterLabel(filter)}」未顯示此任務。`
+    );
   }
 
   function handleCreateNote(input: {
