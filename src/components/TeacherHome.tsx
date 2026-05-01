@@ -11,8 +11,12 @@ type TeacherHomeProps = {
   onStatusChange: (taskId: string, status: Task["status"]) => void;
 };
 
+function assignedToTeacher(task: Task, teacherId: string) {
+  return task.assignedTo === teacherId || task.ownerIds.includes(teacherId);
+}
+
 export function TeacherHome({ teacher, tasks, teachers, onStatusChange }: TeacherHomeProps) {
-  const myTasks = tasks.filter((task) => task.ownerIds.includes(teacher.id));
+  const myTasks = tasks.filter((task) => assignedToTeacher(task, teacher.id));
   const focusTasks = getTeacherFocusTasks(tasks, teacher.id, 2);
 
   return (

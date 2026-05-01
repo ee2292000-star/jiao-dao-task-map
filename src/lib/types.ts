@@ -1,5 +1,15 @@
 export type Role = "director" | "teacher";
 
+export type AuthRole = "admin" | "teacher";
+
+export type AuthUser = {
+  id: string;
+  name: string;
+  username: string;
+  password: string;
+  role: AuthRole;
+};
+
 export type TaskStatus = "todo" | "doing" | "done";
 
 export type Priority = "low" | "normal" | "high";
@@ -38,6 +48,7 @@ export type Task = {
   description: string;
   assignees: string[];
   ownerIds: string[];
+  assignedTo?: string;
   eventId?: string;
   status: TaskStatus;
   priority: Priority;

@@ -40,6 +40,7 @@ export function generateEventTemplateTasks(params: {
       description: `請完成「${item.title}」相關準備，並在需要時補充說明或留言。`,
       assignees: ownerId ? [ownerId] : [],
       ownerIds: ownerId ? [ownerId] : [],
+      assignedTo: ownerId || undefined,
       eventId: params.eventId,
       status: "todo",
       priority: item.priority,

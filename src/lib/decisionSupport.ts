@@ -21,6 +21,7 @@ export function getStatusLabel(status: Task["status"]) {
 }
 
 function getAssigneeIds(task: Task) {
+  if (task.assignedTo) return [task.assignedTo];
   return task.assignees.length ? task.assignees : task.ownerIds;
 }
 

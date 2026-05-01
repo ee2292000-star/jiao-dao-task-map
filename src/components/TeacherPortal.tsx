@@ -16,6 +16,10 @@ type TeacherPortalProps = {
   onToggleNote: (noteId: string) => void;
 };
 
+function assignedToTeacher(task: Task, teacherId: string) {
+  return task.assignedTo === teacherId || task.ownerIds.includes(teacherId);
+}
+
 export function TeacherPortal({
   teacher,
   tasks,
@@ -25,7 +29,7 @@ export function TeacherPortal({
   onQuickComment,
   onToggleNote
 }: TeacherPortalProps) {
-  const myTasks = tasks.filter((task) => task.ownerIds.includes(teacher.id));
+  const myTasks = tasks.filter((task) => assignedToTeacher(task, teacher.id));
   const focusTasks = getTeacherFocusTasks(tasks, teacher.id, 2);
   const myNotes = notes.filter((note) => note.assigneeId === teacher.id && !note.done);
 

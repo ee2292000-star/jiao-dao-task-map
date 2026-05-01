@@ -15,11 +15,12 @@ import { TemplatePanel } from "@/components/TemplatePanel";
 import { Timeline } from "@/components/Timeline";
 import { WorkloadPanel } from "@/components/WorkloadPanel";
 import { events as initialEvents, initialTasks, stickyNotes, teachers as initialTeachers } from "@/lib/initialData";
+import { AUTH_STORAGE_KEY } from "@/lib/auth";
 import { balanceTaskAssignments } from "@/lib/decisionSupport";
 import { getDaysLeft } from "@/lib/reminders";
 import { generateEventTemplateTasks, savedEventTemplates } from "@/lib/templates";
 import { deleteCloudTask, deleteCloudTeacher, isSupabaseConfigured, loadCloudData, saveCloudData } from "@/lib/supabaseClient";
-import type { Event, StickyNote, Task, Teacher } from "@/lib/types";
+import type { AuthUser, Event, StickyNote, Task, Teacher } from "@/lib/types";
 import type { Priority, StickyColor } from "@/lib/types";
 
 const navItems = [
@@ -118,6 +119,7 @@ function normalizeTask(task: Partial<Task>): Task {
     description: task.description ?? "",
     assignees,
     ownerIds,
+    assignedTo: task.assignedTo ?? ownerIds[0] ?? assignees[0],
     eventId: task.eventId,
     status: task.status ?? "todo",
     priority: task.priority ?? "normal",
@@ -214,6 +216,10 @@ function getFilterLabel(filter: string) {
   return "目前篩選條件";
 }
 
+function getAssignedTeacherId(task: Task) {
+  return task.assignedTo ?? task.ownerIds[0] ?? task.assignees[0] ?? "";
+}
+
 export default function Home() {
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [notes, setNotes] = useState<StickyNote[]>(stickyNotes);
@@ -226,13 +232,63 @@ export default function Home() {
   const [actionMessage, setActionMessage] = useState("");
   const [isHydrated, setIsHydrated] = useState(false);
   const [dataSource, setDataSource] = useState<"cloud" | "local">("local");
+  const [currentUser, setCurrentUser] = useState<Omit<AuthUser, "password"> | null>(null);
+  const [isAuthChecked, setIsAuthChecked] = useState(false);
 
   const activeTeacher = useMemo(
-    () => teachers.find((teacher) => teacher.id === activeTeacherId && teacher.enabled !== false),
-    [activeTeacherId, teachers]
+    () => {
+      const found = teachers.find((teacher) => teacher.id === activeTeacherId && teacher.enabled !== false);
+      if (found) return found;
+      if (currentUser?.role === "teacher") {
+        return {
+          id: currentUser.id,
+          name: currentUser.name,
+          role: "教師",
+          avatar: teacherAvatar(currentUser.name),
+          enabled: true
+        };
+      }
+      return undefined;
+    },
+    [activeTeacherId, currentUser, teachers]
   );
-  const visibleTasks = filterTasks(tasks, filter);
+  const permittedTasks =
+    currentUser?.role === "teacher"
+      ? tasks.filter((task) => getAssignedTeacherId(task) === currentUser.id)
+      : tasks;
+  const effectiveMode = currentUser?.role === "teacher" ? "teacher" : currentMode;
+  const visibleTasks = filterTasks(permittedTasks, filter);
   const selectedTask = tasks.find((task) => task.id === selectedTaskId);
+
+  useEffect(() => {
+    const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
+    if (!raw) {
+      window.location.href = "/login";
+      return;
+    }
+
+    try {
+      const user = JSON.parse(raw) as Omit<AuthUser, "password">;
+      setCurrentUser(user);
+      if (user.role === "teacher") {
+        setCurrentMode("teacher");
+        setActiveTeacherId(user.id);
+      }
+    } catch {
+      window.localStorage.removeItem(AUTH_STORAGE_KEY);
+      window.location.href = "/login";
+      return;
+    }
+
+    setIsAuthChecked(true);
+  }, []);
+
+  useEffect(() => {
+    if (currentUser?.role !== "teacher") return;
+    setCurrentMode("teacher");
+    setActiveTeacherId(currentUser.id);
+    setFilter("all");
+  }, [currentUser]);
 
   useEffect(() => {
     async function hydrateData() {
@@ -275,7 +331,11 @@ export default function Home() {
             setEvents(nextEvents);
             setNotes(nextNotes);
             setSelectedTaskId(nextTasks[0]?.id ?? "");
-            setActiveTeacherId(nextTeachers.find((teacher) => teacher.enabled !== false)?.id ?? "");
+            setActiveTeacherId((current) =>
+              currentUser?.role === "teacher"
+                ? currentUser.id
+                : current || (nextTeachers.find((teacher) => teacher.enabled !== false)?.id ?? "")
+            );
             setDataSource("cloud");
             setActionMessage("已連上 Supabase 雲端資料庫。");
             setIsHydrated(true);
@@ -301,7 +361,11 @@ export default function Home() {
       setNotes(localNotes);
       setTeachers(localTeachers);
       setSelectedTaskId(localTasks[0]?.id ?? "");
-      setActiveTeacherId(localTeachers.find((teacher) => teacher.enabled !== false)?.id ?? "");
+      setActiveTeacherId((current) =>
+        currentUser?.role === "teacher"
+          ? currentUser.id
+          : current || (localTeachers.find((teacher) => teacher.enabled !== false)?.id ?? "")
+      );
       setDataSource("local");
       setIsHydrated(true);
       if (hasLocalData) setActionMessage("已載入本機保存資料。");
@@ -366,6 +430,7 @@ export default function Home() {
               ...task,
               assignees: ownerId ? [ownerId] : [],
               ownerIds: ownerId ? [ownerId] : [],
+              assignedTo: ownerId || undefined,
               updatedAt: getTodayString()
             }
           : task
@@ -392,6 +457,7 @@ export default function Home() {
               ...changes,
               assignees: changes.assignees ?? changes.ownerIds ?? task.assignees,
               ownerIds: changes.ownerIds ?? changes.assignees ?? task.ownerIds,
+              assignedTo: changes.assignedTo ?? changes.ownerIds?.[0] ?? changes.assignees?.[0] ?? task.assignedTo,
               updatedAt: getTodayString()
             }
           : task
@@ -510,7 +576,13 @@ export default function Home() {
         if (!task.ownerIds.includes(teacherId) && !task.assignees.includes(teacherId)) return task;
         const ownerIds = task.ownerIds.filter((id) => id !== teacherId);
         const assignees = task.assignees.filter((id) => id !== teacherId);
-        return { ...task, ownerIds, assignees, updatedAt: getTodayString() };
+        return {
+          ...task,
+          ownerIds,
+          assignees,
+          assignedTo: task.assignedTo === teacherId ? ownerIds[0] : task.assignedTo,
+          updatedAt: getTodayString()
+        };
       });
       writeStoredArray(TASKS_STORAGE_KEY, nextTasks);
       return nextTasks;
@@ -597,6 +669,7 @@ export default function Home() {
       description: "由共筆便利貼轉為正式任務，後續可進看板追蹤。",
       assignees: note.assigneeId ? [note.assigneeId] : [],
       ownerIds: note.assigneeId ? [note.assigneeId] : [],
+      assignedTo: note.assigneeId,
       eventId: note.eventId,
       status: "todo",
       priority: "normal",
@@ -632,6 +705,7 @@ export default function Home() {
       description: input.description || "快速新增任務，可再補充說明與留言。",
       assignees: input.assigneeId ? [input.assigneeId] : [],
       ownerIds: input.assigneeId ? [input.assigneeId] : [],
+      assignedTo: input.assigneeId || undefined,
       status: "todo",
       priority: input.priority,
       isCritical: input.isCritical,
@@ -780,6 +854,7 @@ export default function Home() {
         status: "todo" as const,
         assignees: [],
         ownerIds: [],
+        assignedTo: undefined,
         isBlocked: false,
         dueDate: nextDue.toISOString().slice(0, 10),
         createdAt: getTodayString(),
@@ -822,6 +897,21 @@ export default function Home() {
     setActionMessage("已清空本機資料。");
   }
 
+  function handleLogout() {
+    window.localStorage.removeItem(AUTH_STORAGE_KEY);
+    window.location.href = "/login";
+  }
+
+  if (!isAuthChecked || !currentUser) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-rice p-6 text-ink">
+        <div className="rounded-lg bg-white p-6 text-2xl font-black text-forest-800 shadow-soft">
+          正在檢查登入狀態...
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-rice">
       <div className="grid min-h-screen lg:grid-cols-[290px_1fr]">
@@ -835,7 +925,7 @@ export default function Home() {
             <div className="mt-3 grid grid-cols-2 gap-2">
               <button
                 className={`rounded-md px-3 py-3 text-lg font-black ${
-                  currentMode === "director" ? "bg-forest-700 text-white" : "bg-white text-ink"
+                  effectiveMode === "director" ? "bg-forest-700 text-white" : "bg-white text-ink"
                 }`}
                 onClick={() => setCurrentMode("director")}
               >
@@ -843,14 +933,14 @@ export default function Home() {
               </button>
               <button
                 className={`rounded-md px-3 py-3 text-lg font-black ${
-                  currentMode === "teacher" ? "bg-forest-700 text-white" : "bg-white text-ink"
+                  effectiveMode === "teacher" ? "bg-forest-700 text-white" : "bg-white text-ink"
                 }`}
                 onClick={() => setCurrentMode("teacher")}
               >
                 教師端
               </button>
             </div>
-            {currentMode === "teacher" && (
+            {effectiveMode === "teacher" && currentUser.role === "admin" && (
               teachers.filter((teacher) => teacher.enabled !== false).length ? (
                 <select
                   className="mt-3 w-full rounded-md border border-forest-100 bg-white px-3 py-3 text-lg font-black"
@@ -874,7 +964,7 @@ export default function Home() {
             )}
           </div>
           <nav className="mt-6 space-y-2">
-            {(currentMode === "director" ? navItems : [["我的任務", "teacher-portal"]]).map(([label, target]) => (
+            {(effectiveMode === "director" ? navItems : [["我的任務", "teacher-portal"]]).map(([label, target]) => (
               <a
                 key={label}
                 href={`#${target}`}
@@ -886,7 +976,16 @@ export default function Home() {
           </nav>
           <div className="mt-6 rounded-lg bg-rice p-4 text-ink">
             <p className="text-lg font-bold">目前登入身分</p>
-            <p className="mt-1 text-2xl font-black">{activeTeacher?.name ?? "尚未選擇教師"}</p>
+            <p className="mt-1 text-2xl font-black">{currentUser.name}</p>
+            <p className="mt-1 text-base font-black text-forest-800">
+              {currentUser.role === "admin" ? "主任" : "教師"}
+            </p>
+            <button
+              className="mt-3 w-full rounded-md bg-forest-700 px-4 py-2 text-base font-black text-white"
+              onClick={handleLogout}
+            >
+              登出
+            </button>
           </div>
           <div className="mt-4 rounded-lg bg-forest-700 p-4">
             <p className="text-lg font-bold text-forest-50">本機資料</p>
@@ -908,22 +1007,24 @@ export default function Home() {
           <header className="mb-6 flex flex-col justify-between gap-4 rounded-lg bg-warm p-5 shadow-soft xl:flex-row xl:items-center">
             <div>
               <p className="text-xl font-bold text-forest-700">
-                {currentMode === "director" ? "優先順序 · 畫面決策 · 教師減壓" : "只看自己的任務 · 少壓力 · 好更新"}
+                {effectiveMode === "director" ? "優先順序 · 畫面決策 · 教師減壓" : "只看自己的任務 · 少壓力 · 好更新"}
               </p>
               <h2 className="mt-2 text-5xl font-black leading-tight text-ink">
-                {currentMode === "director"
+                {effectiveMode === "director"
                   ? "教導處運作中心（Action First Dashboard）"
                   : "我的任務"}
               </h2>
             </div>
             <div className="grid gap-3 xl:min-w-[540px]">
-              <CommandBar
-                tasks={tasks}
-                teachers={teachers}
-                onOpenTask={setSelectedTaskId}
-                onFilterTeacher={(teacherId) => setFilter(`teacher:${teacherId}`)}
-                onAssignMode={() => setFilter("unassigned")}
-              />
+              {currentUser.role === "admin" && (
+                <CommandBar
+                  tasks={permittedTasks}
+                  teachers={teachers}
+                  onOpenTask={setSelectedTaskId}
+                  onFilterTeacher={(teacherId) => setFilter(`teacher:${teacherId}`)}
+                  onAssignMode={() => setFilter("unassigned")}
+                />
+              )}
               <div className="rounded-lg bg-white px-5 py-3 text-right">
                 <p className="text-lg font-bold text-stone-600">今日</p>
                 <p className="text-3xl font-black text-forest-700">
@@ -934,11 +1035,11 @@ export default function Home() {
           </header>
 
           <div className="space-y-6">
-            {currentMode === "teacher" ? (
+            {effectiveMode === "teacher" ? (
               activeTeacher ? (
                 <TeacherPortal
                   teacher={activeTeacher}
-                  tasks={tasks}
+                  tasks={permittedTasks}
                   notes={notes}
                   teachers={teachers}
                   onStatusChange={handleStatusChange}

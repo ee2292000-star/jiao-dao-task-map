@@ -81,6 +81,7 @@ export function TaskCard({
       description: draft.description,
       assignees: draft.ownerId ? [draft.ownerId] : [],
       ownerIds: draft.ownerId ? [draft.ownerId] : [],
+      assignedTo: draft.ownerId || undefined,
       dueDate: draft.dueDate,
       priority: draft.priority,
       status: draft.status

@@ -91,6 +91,7 @@ function fromTaskRow(row: TaskRow): Task {
     description: row.description,
     assignees: row.assignees ?? [],
     ownerIds: row.owner_ids ?? [],
+    assignedTo: row.owner_ids?.[0],
     eventId: row.event_id ?? undefined,
     status: row.status,
     priority: row.priority,
