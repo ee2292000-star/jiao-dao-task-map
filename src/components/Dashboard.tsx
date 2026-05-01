@@ -77,7 +77,7 @@ export function Dashboard({
   const stickySummary = getStickyActionSummary(notes);
   const unassigned = tasks.filter((task) => task.ownerIds.length === 0 && task.status !== "done");
   const unrepliedComments = tasks.filter((task) => task.comments.length > 0 && task.status !== "done");
-  const teacherOptions = teachers.filter((teacher) => teacher.role !== "主任");
+  const teacherOptions = teachers.filter((teacher) => teacher.enabled !== false);
 
   const overviewCards = [
     { id: "week", label: "本週到期", value: dueThisWeek.length, className: "bg-white text-ink" },
@@ -106,7 +106,7 @@ export function Dashboard({
             </span>
           </div>
           <div className="mt-5 space-y-3">
-            {topPriorities.map(({ task, daysLeft, score, reasons }, index) => (
+            {topPriorities.length ? topPriorities.map(({ task, daysLeft, score, reasons }, index) => (
               <div
                 key={task.id}
                 className={`group rounded-lg border p-4 ${
@@ -186,7 +186,11 @@ export function Dashboard({
                   </div>
                 )}
               </div>
-            ))}
+            )) : (
+              <p className="rounded-lg bg-rice p-5 text-2xl font-black text-forest-800">
+                目前沒有需要優先處理的任務
+              </p>
+            )}
           </div>
         </div>
 
@@ -194,7 +198,7 @@ export function Dashboard({
           <p className="text-xl font-black text-red-700">風險與卡關</p>
           <h2 className="mt-1 text-4xl font-black text-ink">直接做決策</h2>
           <div className="mt-5 space-y-3">
-            {riskItems.map((item) => (
+            {riskItems.length ? riskItems.map((item) => (
               <div key={item.id} className="rounded-lg border border-orange-100 bg-orange-50 p-4">
                 <div className="flex items-start justify-between gap-2">
                   <div>
@@ -246,7 +250,11 @@ export function Dashboard({
                   </ActionButton>
                 </ActionBar>
               </div>
-            ))}
+            )) : (
+              <p className="rounded-lg bg-rice p-5 text-xl font-black text-forest-800">
+                目前沒有風險與卡關任務
+              </p>
+            )}
           </div>
         </div>
 
@@ -259,7 +267,7 @@ export function Dashboard({
             <ActionButton tone="primary" onClick={onBalanceTasks}>一鍵平均分配</ActionButton>
           </div>
           <div className="mt-5 space-y-3">
-            {workloadHighlights.map((item) => (
+            {workloadHighlights.length ? workloadHighlights.map((item) => (
               <div key={item.teacher.id} className="rounded-lg border border-forest-100 bg-rice p-4">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-2xl font-black">{item.teacher.name}</p>
@@ -303,7 +311,11 @@ export function Dashboard({
                   </select>
                 </ActionBar>
               </div>
-            ))}
+            )) : (
+              <p className="rounded-lg bg-rice p-5 text-xl font-black text-forest-800">
+                尚未建立教師資料
+              </p>
+            )}
           </div>
         </div>
       </section>
@@ -340,12 +352,12 @@ export function Dashboard({
           <p className="rounded-lg bg-rice p-4 text-lg font-black">
             便利貼待辦：{stickySummary.open}，快到期 {stickySummary.dueSoon}
           </p>
-          <ActionButton tone="primary" onClick={() => reminders[0] && onOpenTask(reminders[0].taskId)}>
+          <ActionButton tone="primary" onClick={() => reminders[0] && onOpenTask(reminders[0].taskId)} disabled={!reminders[0]}>
             處理第一則提醒
           </ActionButton>
         </div>
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
-          {reminders.map((reminder) => (
+          {reminders.length ? reminders.map((reminder) => (
             <div key={reminder.id} className="rounded-lg border border-amber-100 bg-amber-50 p-3">
               <p className="text-lg font-black text-amber-900">{reminder.message}</p>
               <ActionBar subtle>
@@ -360,7 +372,11 @@ export function Dashboard({
                 </ActionButton>
               </ActionBar>
             </div>
-          ))}
+          )) : (
+            <p className="rounded-lg bg-rice p-4 text-lg font-black text-forest-800">
+              目前沒有提醒
+            </p>
+          )}
         </div>
       </section>
 
@@ -370,7 +386,7 @@ export function Dashboard({
           <h2 className="text-3xl font-black text-ink">大型活動進度</h2>
         </div>
         <div className="mt-5 grid gap-4 xl:grid-cols-3">
-          {events.map((event) => {
+          {events.length ? events.map((event) => {
             const percent = getEventProgress(event, tasks);
             const risks = getEventRisks(event, tasks);
             const eventTasks = tasks.filter((task) => task.eventId === event.id);
@@ -403,7 +419,11 @@ export function Dashboard({
                 </ActionBar>
               </div>
             );
-          })}
+          }) : (
+            <p className="rounded-lg bg-rice p-5 text-xl font-black text-forest-800 xl:col-span-3">
+              尚未建立活動
+            </p>
+          )}
         </div>
       </section>
     </div>

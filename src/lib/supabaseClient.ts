@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import type { Event, StickyNote, Task } from "./types";
+import type { Event, StickyNote, Task, Teacher } from "./types";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -34,6 +34,13 @@ type TaskRow = {
   attachments: Task["attachments"];
 };
 
+type TeacherRow = {
+  id: string;
+  name: string;
+  role: string;
+  avatar: string;
+};
+
 type EventRow = {
   id: string;
   name: string;
@@ -57,6 +64,25 @@ type StickyNoteRow = {
   created_at: string;
   updated_at: string;
 };
+
+function fromTeacherRow(row: TeacherRow): Teacher {
+  return {
+    id: row.id,
+    name: row.name,
+    role: row.role,
+    avatar: row.avatar,
+    enabled: true
+  };
+}
+
+function toTeacherRow(teacher: Teacher): TeacherRow {
+  return {
+    id: teacher.id,
+    name: teacher.name,
+    role: teacher.role,
+    avatar: teacher.avatar
+  };
+}
 
 function fromTaskRow(row: TaskRow): Task {
   return {
@@ -161,16 +187,18 @@ function toStickyNoteRow(note: StickyNote): StickyNoteRow {
 export async function loadCloudData() {
   if (!supabase) return null;
 
-  const [eventsResult, tasksResult, notesResult] = await Promise.all([
+  const [teachersResult, eventsResult, tasksResult, notesResult] = await Promise.all([
+    supabase.from("teachers").select("*").order("name", { ascending: true }),
     supabase.from("events").select("*").order("end_date", { ascending: true }),
     supabase.from("tasks").select("*").order("due_date", { ascending: true }),
     supabase.from("sticky_notes").select("*").order("created_at", { ascending: false })
   ]);
 
-  if (eventsResult.error || tasksResult.error || notesResult.error) {
-    throw eventsResult.error ?? tasksResult.error ?? notesResult.error;
+  if (teachersResult.error || eventsResult.error || tasksResult.error || notesResult.error) {
+    throw teachersResult.error ?? eventsResult.error ?? tasksResult.error ?? notesResult.error;
   }
 
+  const teachers = ((teachersResult.data ?? []) as TeacherRow[]).map(fromTeacherRow);
   const tasks = ((tasksResult.data ?? []) as TaskRow[]).map(fromTaskRow);
   const events = ((eventsResult.data ?? []) as EventRow[]).map(fromEventRow).map((event) => ({
     ...event,
@@ -178,35 +206,58 @@ export async function loadCloudData() {
   }));
   const notes = ((notesResult.data ?? []) as StickyNoteRow[]).map(fromStickyNoteRow);
 
-  return { events, tasks, notes };
+  return { teachers, events, tasks, notes };
 }
 
 export async function saveCloudData(params: {
+  teachers?: Teacher[];
   events: Event[];
   tasks: Task[];
   notes: StickyNote[];
 }) {
   if (!supabase) return;
 
-  const { error: eventsError } = await supabase
-    .from("events")
-    .upsert(params.events.map(toEventRow), { onConflict: "id" });
-  if (eventsError) throw eventsError;
+  if (params.teachers) {
+    if (params.teachers.length) {
+      const { error: teachersError } = await supabase
+        .from("teachers")
+        .upsert(params.teachers.map(toTeacherRow), { onConflict: "id" });
+      if (teachersError) throw teachersError;
+    }
+  }
 
-  const { error: tasksError } = await supabase
-    .from("tasks")
-    .upsert(params.tasks.map(toTaskRow), { onConflict: "id" });
-  if (tasksError) throw tasksError;
+  if (params.events.length) {
+    const { error: eventsError } = await supabase
+      .from("events")
+      .upsert(params.events.map(toEventRow), { onConflict: "id" });
+    if (eventsError) throw eventsError;
+  }
 
-  const { error: notesError } = await supabase
-    .from("sticky_notes")
-    .upsert(params.notes.map(toStickyNoteRow), { onConflict: "id" });
-  if (notesError) throw notesError;
+  if (params.tasks.length) {
+    const { error: tasksError } = await supabase
+      .from("tasks")
+      .upsert(params.tasks.map(toTaskRow), { onConflict: "id" });
+    if (tasksError) throw tasksError;
+  }
+
+  if (params.notes.length) {
+    const { error: notesError } = await supabase
+      .from("sticky_notes")
+      .upsert(params.notes.map(toStickyNoteRow), { onConflict: "id" });
+    if (notesError) throw notesError;
+  }
 }
 
 export async function deleteCloudTask(taskId: string) {
   if (!supabase) return;
 
   const { error } = await supabase.from("tasks").delete().eq("id", taskId);
+  if (error) throw error;
+}
+
+export async function deleteCloudTeacher(teacherId: string) {
+  if (!supabase) return;
+
+  const { error } = await supabase.from("teachers").delete().eq("id", teacherId);
   if (error) throw error;
 }

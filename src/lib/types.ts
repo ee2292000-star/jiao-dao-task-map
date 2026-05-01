@@ -9,8 +9,10 @@ export type StickyColor = "yellow" | "pink" | "green" | "blue";
 export type User = {
   id: string;
   name: string;
-  role: "主任" | "組長" | "導師" | "科任";
+  role: string;
   avatar: string;
+  teachingScope?: string;
+  enabled?: boolean;
 };
 
 export type Teacher = User;

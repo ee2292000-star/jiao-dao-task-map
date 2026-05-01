@@ -51,7 +51,7 @@ export function ActivityDatabase({
       </div>
 
       <div className="mt-5 grid gap-5">
-        {events.map((event) => {
+        {events.length ? events.map((event) => {
           const eventTasks = tasks.filter((task) => task.eventId === event.id);
           const commentsCount = eventTasks.reduce((total, task) => total + task.comments.length, 0);
           const attachmentsCount = eventTasks.reduce(
@@ -128,7 +128,11 @@ export function ActivityDatabase({
               </div>
             </article>
           );
-        })}
+        }) : (
+          <p className="rounded-lg bg-rice p-5 text-2xl font-black text-forest-800">
+            尚未建立活動
+          </p>
+        )}
       </div>
     </section>
   );

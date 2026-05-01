@@ -51,7 +51,7 @@ export function QuickCreatePanel({
   onCreateNote,
   onCreateEvent
 }: QuickCreatePanelProps) {
-  const teacherOptions = teachers.filter((teacher) => teacher.role !== "主任");
+  const teacherOptions = teachers.filter((teacher) => teacher.enabled !== false);
   const today = getTodayString();
   const defaultDueDate = addDaysString(6);
   const [taskInput, setTaskInput] = useState<QuickTaskInput>({
@@ -194,7 +194,7 @@ export function QuickCreatePanel({
             className="min-h-32 rounded-md border border-forest-100 bg-warm px-4 py-3 text-xl font-bold"
             value={noteInput.body}
             onChange={(event) => setNoteInput((current) => ({ ...current, body: event.target.value }))}
-            placeholder="便利貼內容，例如：請確認畢業典禮座位圖"
+            placeholder="便利貼內容，例如：請確認活動座位圖"
             aria-label="便利貼內容"
           />
           <div className="grid gap-3 md:grid-cols-3">
@@ -254,7 +254,7 @@ export function QuickCreatePanel({
             onChange={(event) =>
               setEventInput((current) => ({ ...current, name: event.target.value }))
             }
-            placeholder="活動名稱，例如：114學年度畢業典禮"
+            placeholder="活動名稱，例如：學年度重要活動"
             aria-label="活動名稱"
           />
           <div className="grid gap-3 md:grid-cols-2">

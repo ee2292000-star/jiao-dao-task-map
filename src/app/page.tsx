@@ -9,16 +9,17 @@ import { KanbanBoard } from "@/components/KanbanBoard";
 import { QuickCreatePanel } from "@/components/QuickCreatePanel";
 import { StickyWall } from "@/components/StickyWall";
 import { TeacherHome } from "@/components/TeacherHome";
+import { TeacherManagement } from "@/components/TeacherManagement";
 import { TeacherPortal } from "@/components/TeacherPortal";
 import { TemplatePanel } from "@/components/TemplatePanel";
 import { Timeline } from "@/components/Timeline";
 import { WorkloadPanel } from "@/components/WorkloadPanel";
-import { events as initialEvents, initialTasks, stickyNotes, teachers } from "@/lib/mockData";
+import { events as initialEvents, initialTasks, stickyNotes, teachers as initialTeachers } from "@/lib/initialData";
 import { balanceTaskAssignments } from "@/lib/decisionSupport";
 import { getDaysLeft } from "@/lib/reminders";
 import { generateEventTemplateTasks, savedEventTemplates } from "@/lib/templates";
-import { deleteCloudTask, isSupabaseConfigured, loadCloudData, saveCloudData } from "@/lib/supabaseClient";
-import type { Event, StickyNote, Task } from "@/lib/types";
+import { deleteCloudTask, deleteCloudTeacher, isSupabaseConfigured, loadCloudData, saveCloudData } from "@/lib/supabaseClient";
+import type { Event, StickyNote, Task, Teacher } from "@/lib/types";
 import type { Priority, StickyColor } from "@/lib/types";
 
 const navItems = [
@@ -32,12 +33,13 @@ const navItems = [
   ["活動模板", "templates"],
   ["教師端", "teacher"],
   ["活動資料庫", "archive"],
-  ["系統設定", "archive"]
+  ["系統設定", "settings"]
 ];
 
 const TASKS_STORAGE_KEY = "jiao-dao-task-map:tasks:v1";
 const NOTES_STORAGE_KEY = "jiao-dao-task-map:sticky-notes:v1";
 const EVENTS_STORAGE_KEY = "jiao-dao-task-map:events:v1";
+const TEACHERS_STORAGE_KEY = "jiao-dao-task-map:teachers:v1";
 
 function readStoredArray<T>(key: string): T[] | null {
   try {
@@ -68,6 +70,44 @@ function addDaysString(days: number) {
   return date.toLocaleDateString("sv-SE");
 }
 
+function teacherAvatar(name: string) {
+  return name.trim().slice(0, 1) || "師";
+}
+
+function normalizeTeacher(teacher: Partial<Teacher>): Teacher {
+  const name = teacher.name ?? "未命名教師";
+  return {
+    id: teacher.id ?? `teacher-${Date.now()}`,
+    name,
+    role: teacher.role ?? "教師",
+    avatar: teacher.avatar ?? teacherAvatar(name),
+    teachingScope: teacher.teachingScope ?? "",
+    enabled: teacher.enabled ?? true
+  };
+}
+
+function isLegacySeededTeacher(teacher: Partial<Teacher>) {
+  return ["t1", "t2", "t3", "t4", "t5"].includes(teacher.id ?? "");
+}
+
+function isLegacySeededTask(task: Partial<Task>) {
+  return (
+    task.id?.startsWith("task-weekly-") ||
+    task.id?.startsWith("event-graduation-task-") ||
+    task.eventId === "event-graduation" ||
+    task.eventId === "event-anniversary" ||
+    task.eventId === "event-exhibition"
+  );
+}
+
+function isLegacySeededEvent(event: Partial<Event>) {
+  return ["event-graduation", "event-anniversary", "event-exhibition"].includes(event.id ?? "");
+}
+
+function isLegacySeededNote(note: Partial<StickyNote>) {
+  return note.id?.startsWith("note-") || note.eventId === "event-graduation";
+}
+
 function normalizeTask(task: Partial<Task>): Task {
   const ownerIds = task.ownerIds ?? task.assignees ?? [];
   const assignees = task.assignees ?? ownerIds;
@@ -95,7 +135,12 @@ function normalizeTask(task: Partial<Task>): Task {
 
 function mergeStoredTasks(storedTasks: Task[] | null) {
   if (!storedTasks) return initialTasks;
-  return storedTasks.map(normalizeTask);
+  return storedTasks.filter((task) => !isLegacySeededTask(task)).map(normalizeTask);
+}
+
+function mergeStoredTeachers(storedTeachers: Teacher[] | null) {
+  if (!storedTeachers) return initialTeachers;
+  return storedTeachers.filter((teacher) => !isLegacySeededTeacher(teacher)).map(normalizeTeacher);
 }
 
 function normalizeEvent(event: Partial<Event>): Event {
@@ -113,7 +158,7 @@ function normalizeEvent(event: Partial<Event>): Event {
 
 function mergeStoredEvents(storedEvents: Event[] | null) {
   if (!storedEvents) return initialEvents;
-  return storedEvents.map(normalizeEvent);
+  return storedEvents.filter((event) => !isLegacySeededEvent(event)).map(normalizeEvent);
 }
 
 function mergeUniqueById<T extends { id: string }>(primary: T[], secondary: T[]) {
@@ -173,8 +218,9 @@ export default function Home() {
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [notes, setNotes] = useState<StickyNote[]>(stickyNotes);
   const [events, setEvents] = useState<Event[]>(initialEvents);
+  const [teachers, setTeachers] = useState<Teacher[]>(initialTeachers);
   const [currentMode, setCurrentMode] = useState<"director" | "teacher">("director");
-  const [activeTeacherId, setActiveTeacherId] = useState("t3");
+  const [activeTeacherId, setActiveTeacherId] = useState("");
   const [filter, setFilter] = useState("all");
   const [selectedTaskId, setSelectedTaskId] = useState(initialTasks[0]?.id ?? "");
   const [actionMessage, setActionMessage] = useState("");
@@ -182,8 +228,8 @@ export default function Home() {
   const [dataSource, setDataSource] = useState<"cloud" | "local">("local");
 
   const activeTeacher = useMemo(
-    () => teachers.find((teacher) => teacher.id === activeTeacherId) ?? teachers[0],
-    [activeTeacherId]
+    () => teachers.find((teacher) => teacher.id === activeTeacherId && teacher.enabled !== false),
+    [activeTeacherId, teachers]
   );
   const visibleTasks = filterTasks(tasks, filter);
   const selectedTask = tasks.find((task) => task.id === selectedTaskId);
@@ -193,34 +239,49 @@ export default function Home() {
       const storedTasks = readStoredArray<Task>(TASKS_STORAGE_KEY);
       const storedNotes = readStoredArray<StickyNote>(NOTES_STORAGE_KEY);
       const storedEvents = readStoredArray<Event>(EVENTS_STORAGE_KEY);
+      const storedTeachers = readStoredArray<Teacher>(TEACHERS_STORAGE_KEY);
       const localTasks = mergeStoredTasks(storedTasks);
       const localEvents = mergeStoredEvents(storedEvents);
-      const localNotes = storedNotes ?? stickyNotes;
-      const hasLocalData = Boolean(storedTasks || storedNotes || storedEvents);
+      const localNotes = storedNotes ? storedNotes.filter((note) => !isLegacySeededNote(note)) : stickyNotes;
+      const localTeachers = mergeStoredTeachers(storedTeachers);
+      const hasLocalData = Boolean(storedTasks || storedNotes || storedEvents || storedTeachers);
 
       if (isSupabaseConfigured) {
         try {
           const cloudData = await loadCloudData();
           if (cloudData) {
             const hasCloudData = Boolean(
-              cloudData.tasks.length || cloudData.events.length || cloudData.notes.length
+              cloudData.teachers.length || cloudData.tasks.length || cloudData.events.length || cloudData.notes.length
             );
-            const cloudTasks = hasCloudData ? cloudData.tasks : initialTasks;
-            const cloudEvents = hasCloudData ? cloudData.events : initialEvents;
-            const cloudNotes = hasCloudData ? cloudData.notes : stickyNotes;
+            const cloudTeachers = hasCloudData
+              ? cloudData.teachers.filter((teacher) => !isLegacySeededTeacher(teacher))
+              : initialTeachers;
+            const cloudTasks = hasCloudData
+              ? cloudData.tasks.filter((task) => !isLegacySeededTask(task))
+              : initialTasks;
+            const cloudEvents = hasCloudData
+              ? cloudData.events.filter((event) => !isLegacySeededEvent(event))
+              : initialEvents;
+            const cloudNotes = hasCloudData
+              ? cloudData.notes.filter((note) => !isLegacySeededNote(note))
+              : stickyNotes;
+            const nextTeachers = hasLocalData ? mergeUniqueById(localTeachers, cloudTeachers) : cloudTeachers;
             const nextTasks = hasLocalData ? mergeUniqueById(localTasks, cloudTasks) : cloudTasks;
             const nextEvents = hasLocalData ? mergeUniqueById(localEvents, cloudEvents) : cloudEvents;
             const nextNotes = hasLocalData ? mergeUniqueById(localNotes, cloudNotes) : cloudNotes;
 
+            setTeachers(nextTeachers);
             setTasks(nextTasks);
             setEvents(nextEvents);
             setNotes(nextNotes);
             setSelectedTaskId(nextTasks[0]?.id ?? "");
+            setActiveTeacherId(nextTeachers.find((teacher) => teacher.enabled !== false)?.id ?? "");
             setDataSource("cloud");
             setActionMessage("已連上 Supabase 雲端資料庫。");
             setIsHydrated(true);
 
             await saveCloudData({
+              teachers: nextTeachers,
               events: nextEvents,
               tasks: nextTasks,
               notes: nextNotes
@@ -238,7 +299,9 @@ export default function Home() {
       setTasks(localTasks);
       setEvents(localEvents);
       setNotes(localNotes);
+      setTeachers(localTeachers);
       setSelectedTaskId(localTasks[0]?.id ?? "");
+      setActiveTeacherId(localTeachers.find((teacher) => teacher.enabled !== false)?.id ?? "");
       setDataSource("local");
       setIsHydrated(true);
       if (hasLocalData) setActionMessage("已載入本機保存資料。");
@@ -263,16 +326,21 @@ export default function Home() {
   }, [isHydrated, events]);
 
   useEffect(() => {
+    if (!isHydrated) return;
+    window.localStorage.setItem(TEACHERS_STORAGE_KEY, JSON.stringify(teachers));
+  }, [isHydrated, teachers]);
+
+  useEffect(() => {
     if (!isHydrated || dataSource !== "cloud") return;
 
     const timeout = window.setTimeout(() => {
-      void saveCloudData({ events, tasks, notes }).catch(() => {
+      void saveCloudData({ teachers, events, tasks, notes }).catch(() => {
         setActionMessage("雲端保存暫時失敗，資料仍保存在本機瀏覽器。");
       });
     }, 500);
 
     return () => window.clearTimeout(timeout);
-  }, [dataSource, events, isHydrated, notes, tasks]);
+  }, [dataSource, events, isHydrated, notes, tasks, teachers]);
 
   function handleStatusChange(taskId: string, status: Task["status"]) {
     setTasks((current) =>
@@ -330,7 +398,7 @@ export default function Home() {
       );
       writeStoredArray(TASKS_STORAGE_KEY, nextTasks);
       if (dataSource === "cloud") {
-        void saveCloudData({ events, tasks: nextTasks, notes }).catch(() => {
+        void saveCloudData({ teachers, events, tasks: nextTasks, notes }).catch(() => {
           setActionMessage("雲端保存暫時失敗，資料仍保存在本機瀏覽器。");
         });
       }
@@ -363,6 +431,101 @@ export default function Home() {
       return nextEvents;
     });
     setActionMessage("任務已刪除，並同步更新看板與摘要。");
+  }
+
+  function handleCreateTeacher(input: {
+    name: string;
+    role: string;
+    teachingScope: string;
+    enabled: boolean;
+  }) {
+    const newTeacher = normalizeTeacher({
+      id: `teacher-${Date.now()}`,
+      name: input.name,
+      role: input.role,
+      teachingScope: input.teachingScope,
+      enabled: input.enabled,
+      avatar: teacherAvatar(input.name)
+    });
+    setTeachers((current) => {
+      const nextTeachers = [newTeacher, ...current];
+      writeStoredArray(TEACHERS_STORAGE_KEY, nextTeachers);
+      if (dataSource === "cloud") {
+        void saveCloudData({ teachers: nextTeachers, events, tasks, notes }).catch(() => {
+          setActionMessage("雲端保存暫時失敗，資料仍保存在本機瀏覽器。");
+        });
+      }
+      return nextTeachers;
+    });
+    if (!activeTeacherId && newTeacher.enabled !== false) setActiveTeacherId(newTeacher.id);
+    setActionMessage("已新增教師，任務指派選單已更新。");
+  }
+
+  function handleUpdateTeacher(
+    teacherId: string,
+    input: { name: string; role: string; teachingScope: string; enabled: boolean }
+  ) {
+    setTeachers((current) => {
+      const nextTeachers = current.map((teacher) =>
+        teacher.id === teacherId
+          ? normalizeTeacher({
+              ...teacher,
+              name: input.name,
+              role: input.role,
+              teachingScope: input.teachingScope,
+              enabled: input.enabled,
+              avatar: teacherAvatar(input.name)
+            })
+          : teacher
+      );
+      writeStoredArray(TEACHERS_STORAGE_KEY, nextTeachers);
+      if (dataSource === "cloud") {
+        void saveCloudData({ teachers: nextTeachers, events, tasks, notes }).catch(() => {
+          setActionMessage("雲端保存暫時失敗，資料仍保存在本機瀏覽器。");
+        });
+      }
+      return nextTeachers;
+    });
+    if (!input.enabled && activeTeacherId === teacherId) {
+      setActiveTeacherId(teachers.find((teacher) => teacher.id !== teacherId && teacher.enabled !== false)?.id ?? "");
+    }
+    setActionMessage("教師資料已更新。");
+  }
+
+  function handleDeleteTeacher(teacherId: string) {
+    if (!window.confirm("確定要刪除此教師資料嗎？原本指派給他的任務會改為尚未指派。")) return;
+
+    setTeachers((current) => {
+      const nextTeachers = current.filter((teacher) => teacher.id !== teacherId);
+      writeStoredArray(TEACHERS_STORAGE_KEY, nextTeachers);
+      if (dataSource === "cloud") {
+        void deleteCloudTeacher(teacherId).catch(() => {
+          setActionMessage("雲端刪除教師暫時失敗，已先更新本機資料。");
+        });
+      }
+      return nextTeachers;
+    });
+    setTasks((current) => {
+      const nextTasks = current.map((task) => {
+        if (!task.ownerIds.includes(teacherId) && !task.assignees.includes(teacherId)) return task;
+        const ownerIds = task.ownerIds.filter((id) => id !== teacherId);
+        const assignees = task.assignees.filter((id) => id !== teacherId);
+        return { ...task, ownerIds, assignees, updatedAt: getTodayString() };
+      });
+      writeStoredArray(TASKS_STORAGE_KEY, nextTasks);
+      return nextTasks;
+    });
+    setNotes((current) => {
+      const nextNotes = current.map((note) =>
+        note.assigneeId === teacherId ? { ...note, assigneeId: undefined } : note
+      );
+      writeStoredArray(NOTES_STORAGE_KEY, nextNotes);
+      return nextNotes;
+    });
+    if (activeTeacherId === teacherId) {
+      setActiveTeacherId(teachers.find((teacher) => teacher.id !== teacherId && teacher.enabled !== false)?.id ?? "");
+    }
+    setActionMessage("教師已刪除，原本指派任務已改為尚未指派。");
   }
 
   function handleQuickComment(taskId: string, body: string) {
@@ -485,7 +648,7 @@ export default function Home() {
       const nextTasks = [newTask, ...current];
       writeStoredArray(TASKS_STORAGE_KEY, nextTasks);
       if (dataSource === "cloud") {
-        void saveCloudData({ events, tasks: nextTasks, notes }).catch(() => {
+        void saveCloudData({ teachers, events, tasks: nextTasks, notes }).catch(() => {
           setActionMessage("雲端保存暫時失敗，資料仍保存在本機瀏覽器。");
         });
       }
@@ -521,7 +684,7 @@ export default function Home() {
       const nextNotes = [newNote, ...current];
       writeStoredArray(NOTES_STORAGE_KEY, nextNotes);
       if (dataSource === "cloud") {
-        void saveCloudData({ events, tasks, notes: nextNotes }).catch(() => {
+        void saveCloudData({ teachers, events, tasks, notes: nextNotes }).catch(() => {
           setActionMessage("雲端保存暫時失敗，資料仍保存在本機瀏覽器。");
         });
       }
@@ -569,7 +732,7 @@ export default function Home() {
       const nextEvents = [...current, newEvent];
       writeStoredArray(EVENTS_STORAGE_KEY, nextEvents);
       if (dataSource === "cloud") {
-        void saveCloudData({ events: nextEvents, tasks: [...newTasks, ...tasks], notes }).catch(() => {
+        void saveCloudData({ teachers, events: nextEvents, tasks: [...newTasks, ...tasks], notes }).catch(() => {
           setActionMessage("雲端保存暫時失敗，資料仍保存在本機瀏覽器。");
         });
       }
@@ -644,15 +807,19 @@ export default function Home() {
   }
 
   function handleResetLocalData() {
+    if (!window.confirm("確定要清空所有教師、任務與活動資料嗎？此動作無法復原。")) return;
     window.localStorage.removeItem(TASKS_STORAGE_KEY);
     window.localStorage.removeItem(NOTES_STORAGE_KEY);
     window.localStorage.removeItem(EVENTS_STORAGE_KEY);
-    setTasks(initialTasks);
-    setNotes(stickyNotes);
-    setEvents(initialEvents);
+    window.localStorage.removeItem(TEACHERS_STORAGE_KEY);
+    setTasks([]);
+    setNotes([]);
+    setEvents([]);
+    setTeachers([]);
     setFilter("all");
-    setSelectedTaskId(initialTasks[0]?.id ?? "");
-    setActionMessage("已重置本機資料，回到範例初始狀態。");
+    setSelectedTaskId("");
+    setActiveTeacherId("");
+    setActionMessage("已清空本機資料。");
   }
 
   return (
@@ -684,20 +851,26 @@ export default function Home() {
               </button>
             </div>
             {currentMode === "teacher" && (
-              <select
-                className="mt-3 w-full rounded-md border border-forest-100 bg-white px-3 py-3 text-lg font-black"
-                value={activeTeacherId}
-                onChange={(event) => setActiveTeacherId(event.target.value)}
-                aria-label="選擇教師端示範教師"
-              >
-                {teachers
-                  .filter((teacher) => teacher.role !== "主任")
-                  .map((teacher) => (
-                    <option key={teacher.id} value={teacher.id}>
-                      {teacher.name}
-                    </option>
-                  ))}
-              </select>
+              teachers.filter((teacher) => teacher.enabled !== false).length ? (
+                <select
+                  className="mt-3 w-full rounded-md border border-forest-100 bg-white px-3 py-3 text-lg font-black"
+                  value={activeTeacherId}
+                  onChange={(event) => setActiveTeacherId(event.target.value)}
+                  aria-label="選擇目前登入身分"
+                >
+                  {teachers
+                    .filter((teacher) => teacher.enabled !== false)
+                    .map((teacher) => (
+                      <option key={teacher.id} value={teacher.id}>
+                        {teacher.name}
+                      </option>
+                    ))}
+                </select>
+              ) : (
+                <p className="mt-3 rounded-md bg-rice px-3 py-3 text-base font-black text-ink">
+                  尚未建立教師資料
+                </p>
+              )
             )}
           </div>
           <nav className="mt-6 space-y-2">
@@ -712,8 +885,8 @@ export default function Home() {
             ))}
           </nav>
           <div className="mt-6 rounded-lg bg-rice p-4 text-ink">
-            <p className="text-lg font-bold">示範教師端</p>
-            <p className="mt-1 text-2xl font-black">{activeTeacher.name}</p>
+            <p className="text-lg font-bold">目前登入身分</p>
+            <p className="mt-1 text-2xl font-black">{activeTeacher?.name ?? "尚未選擇教師"}</p>
           </div>
           <div className="mt-4 rounded-lg bg-forest-700 p-4">
             <p className="text-lg font-bold text-forest-50">本機資料</p>
@@ -726,7 +899,7 @@ export default function Home() {
               className="mt-3 w-full rounded-md bg-rice px-4 py-2 text-base font-black text-ink"
               onClick={handleResetLocalData}
             >
-              重置本機資料
+              清空本機資料
             </button>
           </div>
         </aside>
@@ -762,15 +935,25 @@ export default function Home() {
 
           <div className="space-y-6">
             {currentMode === "teacher" ? (
-              <TeacherPortal
-                teacher={activeTeacher}
-                tasks={tasks}
-                notes={notes}
-                teachers={teachers}
-                onStatusChange={handleStatusChange}
-                onQuickComment={handleQuickComment}
-                onToggleNote={handleStickyToggle}
-              />
+              activeTeacher ? (
+                <TeacherPortal
+                  teacher={activeTeacher}
+                  tasks={tasks}
+                  notes={notes}
+                  teachers={teachers}
+                  onStatusChange={handleStatusChange}
+                  onQuickComment={handleQuickComment}
+                  onToggleNote={handleStickyToggle}
+                />
+              ) : (
+                <section className="rounded-lg bg-white p-5 shadow-soft">
+                  <p className="text-xl font-black text-forest-700">教師端預覽</p>
+                  <h2 className="mt-1 text-4xl font-black text-ink">尚未建立教師資料</h2>
+                  <p className="mt-2 text-lg font-bold text-stone-700">
+                    請先到系統設定新增教師，再切換教師端查看我的任務。
+                  </p>
+                </section>
+              )
             ) : (
               <>
                 <Dashboard
@@ -829,12 +1012,14 @@ export default function Home() {
                   onAssign={handleStickyAssign}
                 />
                 <TemplatePanel />
-                <TeacherHome
-                  teacher={activeTeacher}
-                  tasks={tasks}
-                  teachers={teachers}
-                  onStatusChange={handleStatusChange}
-                />
+                {activeTeacher && (
+                  <TeacherHome
+                    teacher={activeTeacher}
+                    tasks={tasks}
+                    teachers={teachers}
+                    onStatusChange={handleStatusChange}
+                  />
+                )}
                 <ActivityDatabase
                   events={events}
                   tasks={tasks}
@@ -842,6 +1027,12 @@ export default function Home() {
                   onAddReviewNote={handleAddReviewNote}
                   onDuplicateEvent={handleDuplicateEvent}
                   onFilterEvent={(eventId) => setFilter(`event:${eventId}`)}
+                />
+                <TeacherManagement
+                  teachers={teachers}
+                  onCreateTeacher={handleCreateTeacher}
+                  onUpdateTeacher={handleUpdateTeacher}
+                  onDeleteTeacher={handleDeleteTeacher}
                 />
                 <ArchitecturePanel />
               </>

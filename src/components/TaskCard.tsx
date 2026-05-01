@@ -53,7 +53,7 @@ export function TaskCard({
   const owners = teachers.filter((teacher) => task.ownerIds.includes(teacher.id));
   const daysLeft = getDaysLeft(task.dueDate);
   const isOverdue = daysLeft < 0 && task.status !== "done";
-  const activeTeacherOptions = teachers.filter((teacher) => teacher.role !== "主任");
+  const activeTeacherOptions = teachers.filter((teacher) => teacher.enabled !== false);
 
   useEffect(() => {
     setDraft({

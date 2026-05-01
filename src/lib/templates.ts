@@ -2,9 +2,9 @@ import type { EventTemplate, Task } from "./types";
 
 export const savedEventTemplates: EventTemplate[] = [
   {
-    id: "template-graduation",
-    name: "畢業典禮模板",
-    savedAt: "2026-04-30",
+    id: "template-large-event",
+    name: "大型活動模板",
+    savedAt: new Date().toLocaleDateString("sv-SE"),
     items: [
       { title: "邀請卡", daysBeforeEvent: 36, isKeyTask: false, priority: "normal" },
       { title: "流程表", daysBeforeEvent: 30, isKeyTask: true, priority: "high" },
@@ -27,6 +27,7 @@ export function generateEventTemplateTasks(params: {
 }): Task[] {
   const template = params.template ?? savedEventTemplates[0];
   const eventDate = new Date(`${params.eventDate}T00:00:00`);
+  const today = new Date().toLocaleDateString("sv-SE");
 
   return template.items.map((item, index) => {
     const due = new Date(eventDate);
@@ -36,18 +37,18 @@ export function generateEventTemplateTasks(params: {
     return {
       id: `${params.eventId}-task-${index + 1}`,
       title: `${params.eventName} - ${item.title}`,
-      description: `請完成「${item.title}」準備，並在任務卡留下進度、留言與附件。`,
+      description: `請完成「${item.title}」相關準備，並在需要時補充說明或留言。`,
       assignees: ownerId ? [ownerId] : [],
       ownerIds: ownerId ? [ownerId] : [],
       eventId: params.eventId,
-      status: index < 2 ? "done" : index < 5 ? "doing" : "todo",
+      status: "todo",
       priority: item.priority,
       isCritical: item.isKeyTask,
-      isBlocked: item.isKeyTask && index >= 5,
+      isBlocked: false,
       isKeyTask: item.isKeyTask,
       dueDate: due.toISOString().slice(0, 10),
-      createdAt: "2026-04-20",
-      updatedAt: "2026-04-30",
+      createdAt: today,
+      updatedAt: today,
       comments: [],
       attachments: []
     };
@@ -59,7 +60,7 @@ export function duplicateTemplate(template: EventTemplate, nextName: string): Ev
     ...template,
     id: `${template.id}-${Date.now()}`,
     name: nextName,
-    savedAt: new Date().toISOString().slice(0, 10),
+    savedAt: new Date().toLocaleDateString("sv-SE"),
     items: template.items.map((item) => ({ ...item }))
   };
 }

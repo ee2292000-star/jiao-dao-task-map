@@ -192,7 +192,7 @@ export function getRiskTasks(tasks: Task[], context: PriorityContext, limit = 3)
 
 export function getTeacherLoadSuggestions(tasks: Task[], teachers: Teacher[], today = new Date()) {
   const rows = teachers
-    .filter((teacher) => teacher.role !== "主任")
+    .filter((teacher) => teacher.enabled !== false)
     .map((teacher) => {
       const active = tasks.filter(
         (task) => task.status !== "done" && getAssigneeIds(task).includes(teacher.id)
@@ -293,7 +293,7 @@ export function getWorkloadSuggestions(teachers: Teacher[], tasks: Task[]) {
 }
 
 export function balanceTaskAssignments(tasks: Task[], teachers: Teacher[]) {
-  const teacherIds = teachers.filter((teacher) => teacher.role !== "主任").map((teacher) => teacher.id);
+  const teacherIds = teachers.filter((teacher) => teacher.enabled !== false).map((teacher) => teacher.id);
   const activeCounts = new Map(
     teacherIds.map((id) => [
       id,

@@ -20,7 +20,7 @@ const colorClass: Record<StickyNote["color"], string> = {
 };
 
 export function StickyWall({ notes, teachers, onToggle, onConvert, onAssign }: StickyWallProps) {
-  const teacherOptions = teachers.filter((teacher) => teacher.role !== "主任");
+  const teacherOptions = teachers.filter((teacher) => teacher.enabled !== false);
 
   return (
     <section className="rounded-lg bg-white p-5 shadow-soft" id="sticky">
