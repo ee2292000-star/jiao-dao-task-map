@@ -50,6 +50,14 @@ function readStoredArray<T>(key: string): T[] | null {
   }
 }
 
+function writeStoredArray<T>(key: string, value: T[]) {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Local persistence is a safety net only; cloud sync still runs separately.
+  }
+}
+
 function normalizeTask(task: Partial<Task>): Task {
   const ownerIds = task.ownerIds ?? task.assignees ?? [];
   const assignees = task.assignees ?? ownerIds;
@@ -120,6 +128,11 @@ function mergeStoredEvents(storedEvents: Event[] | null) {
   return [...mergedDefaults, ...customEvents];
 }
 
+function mergeUniqueById<T extends { id: string }>(primary: T[], secondary: T[]) {
+  const seen = new Set(primary.map((item) => item.id));
+  return [...primary, ...secondary.filter((item) => !seen.has(item.id))];
+}
+
 function filterTasks(tasks: Task[], filter: string) {
   if (filter === "week") {
     return tasks.filter((task) => {
@@ -171,13 +184,24 @@ export default function Home() {
 
   useEffect(() => {
     async function hydrateData() {
+      const storedTasks = readStoredArray<Task>(TASKS_STORAGE_KEY);
+      const storedNotes = readStoredArray<StickyNote>(NOTES_STORAGE_KEY);
+      const storedEvents = readStoredArray<Event>(EVENTS_STORAGE_KEY);
+      const localTasks = mergeStoredTasks(storedTasks);
+      const localEvents = mergeStoredEvents(storedEvents);
+      const localNotes = storedNotes ?? stickyNotes;
+      const hasLocalData = Boolean(storedTasks || storedNotes || storedEvents);
+
       if (isSupabaseConfigured) {
         try {
           const cloudData = await loadCloudData();
           if (cloudData) {
-            const nextTasks = cloudData.tasks.length ? cloudData.tasks : initialTasks;
-            const nextEvents = cloudData.events.length ? cloudData.events : initialEvents;
-            const nextNotes = cloudData.notes.length ? cloudData.notes : stickyNotes;
+            const cloudTasks = cloudData.tasks.length ? cloudData.tasks : initialTasks;
+            const cloudEvents = cloudData.events.length ? cloudData.events : initialEvents;
+            const cloudNotes = cloudData.notes.length ? cloudData.notes : stickyNotes;
+            const nextTasks = hasLocalData ? mergeUniqueById(localTasks, cloudTasks) : cloudTasks;
+            const nextEvents = hasLocalData ? mergeUniqueById(localEvents, cloudEvents) : cloudEvents;
+            const nextNotes = hasLocalData ? mergeUniqueById(localNotes, cloudNotes) : cloudNotes;
 
             setTasks(nextTasks);
             setEvents(nextEvents);
@@ -187,14 +211,14 @@ export default function Home() {
             setActionMessage("已連上 Supabase 雲端資料庫。");
             setIsHydrated(true);
 
-            if (!cloudData.tasks.length && !cloudData.events.length) {
-              await saveCloudData({
-                events: initialEvents,
-                tasks: initialTasks,
-                notes: stickyNotes
-              });
-              setActionMessage("已建立雲端初始資料。");
-            }
+            await saveCloudData({
+              events: nextEvents,
+              tasks: nextTasks,
+              notes: nextNotes
+            });
+            setActionMessage(
+              hasLocalData ? "已連上 Supabase，並同步本機暫存資料。" : "已連上 Supabase 雲端資料庫。"
+            );
             return;
           }
         } catch {
@@ -202,19 +226,13 @@ export default function Home() {
         }
       }
 
-      const storedTasks = readStoredArray<Task>(TASKS_STORAGE_KEY);
-      const storedNotes = readStoredArray<StickyNote>(NOTES_STORAGE_KEY);
-      const storedEvents = readStoredArray<Event>(EVENTS_STORAGE_KEY);
-      const nextTasks = mergeStoredTasks(storedTasks);
-      const nextEvents = mergeStoredEvents(storedEvents);
-
-      setTasks(nextTasks);
-      setEvents(nextEvents);
-      if (storedNotes) setNotes(storedNotes);
-      setSelectedTaskId(nextTasks[0]?.id ?? "");
+      setTasks(localTasks);
+      setEvents(localEvents);
+      setNotes(localNotes);
+      setSelectedTaskId(localTasks[0]?.id ?? "");
       setDataSource("local");
       setIsHydrated(true);
-      if (storedTasks || storedNotes || storedEvents) setActionMessage("已載入本機保存資料。");
+      if (hasLocalData) setActionMessage("已載入本機保存資料。");
     }
 
     void hydrateData();
@@ -404,7 +422,16 @@ export default function Home() {
       attachments: []
     };
 
-    setTasks((current) => [newTask, ...current]);
+    setTasks((current) => {
+      const nextTasks = [newTask, ...current];
+      writeStoredArray(TASKS_STORAGE_KEY, nextTasks);
+      if (dataSource === "cloud") {
+        void saveCloudData({ events, tasks: nextTasks, notes }).catch(() => {
+          setActionMessage("雲端保存暫時失敗，資料仍保存在本機瀏覽器。");
+        });
+      }
+      return nextTasks;
+    });
     setSelectedTaskId(taskId);
     setFilter("all");
     setActionMessage("已新增任務，並加入自動排序與看板。");
@@ -428,7 +455,16 @@ export default function Home() {
       createdAt: "2026-05-01"
     };
 
-    setNotes((current) => [newNote, ...current]);
+    setNotes((current) => {
+      const nextNotes = [newNote, ...current];
+      writeStoredArray(NOTES_STORAGE_KEY, nextNotes);
+      if (dataSource === "cloud") {
+        void saveCloudData({ events, tasks, notes: nextNotes }).catch(() => {
+          setActionMessage("雲端保存暫時失敗，資料仍保存在本機瀏覽器。");
+        });
+      }
+      return nextNotes;
+    });
     setActionMessage("已新增便利貼，之後可直接轉正式任務。");
   }
 
@@ -467,8 +503,21 @@ export default function Home() {
       reviewNotes: []
     };
 
-    setEvents((current) => [...current, newEvent]);
-    setTasks((current) => [...newTasks, ...current]);
+    setEvents((current) => {
+      const nextEvents = [...current, newEvent];
+      writeStoredArray(EVENTS_STORAGE_KEY, nextEvents);
+      if (dataSource === "cloud") {
+        void saveCloudData({ events: nextEvents, tasks: [...newTasks, ...tasks], notes }).catch(() => {
+          setActionMessage("雲端保存暫時失敗，資料仍保存在本機瀏覽器。");
+        });
+      }
+      return nextEvents;
+    });
+    setTasks((current) => {
+      const nextTasks = [...newTasks, ...current];
+      writeStoredArray(TASKS_STORAGE_KEY, nextTasks);
+      return nextTasks;
+    });
     setFilter(`event:${eventId}`);
     setSelectedTaskId(newTasks[0]?.id ?? selectedTaskId);
     setActionMessage(`已新增活動「${input.name}」，並產生 ${newTasks.length} 個子任務。`);
