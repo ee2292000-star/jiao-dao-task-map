@@ -97,18 +97,24 @@ export function TeacherManagement({
   async function loadAccounts() {
     setIsLoading(true);
     setMessage("");
-    const response = await fetch("/api/teacher-accounts");
-    const result = await response.json();
-    setIsLoading(false);
 
-    if (!response.ok) {
-      setMessage(result.error ?? "教師管理資料讀取失敗。");
-      return;
+    try {
+      const response = await fetch("/api/teacher-accounts");
+      const result = await response.json();
+
+      if (!response.ok) {
+        setMessage(result.error ?? "無法讀取教師帳號。");
+        return;
+      }
+
+      const nextAccounts = (result.accounts ?? []) as TeacherAccount[];
+      setAccounts(nextAccounts);
+      nextAccounts.forEach(ensureTeacherRecord);
+    } catch {
+      setMessage("教師帳號暫時無法讀取，請稍後再試。");
+    } finally {
+      setIsLoading(false);
     }
-
-    const nextAccounts = (result.accounts ?? []) as TeacherAccount[];
-    setAccounts(nextAccounts);
-    nextAccounts.forEach(ensureTeacherRecord);
   }
 
   useEffect(() => {
@@ -133,7 +139,7 @@ export function TeacherManagement({
       enabled: account.enabled,
       teachingScope: teacher?.teachingScope ?? ""
     });
-    setMessage("正在編輯教師資料。密碼欄空白代表不變更。");
+    setMessage("已載入教師資料，可直接修改；密碼留空代表不變更。");
   }
 
   async function saveAccount(nextDraft: ManagementDraft, teacherId: string) {
@@ -154,7 +160,7 @@ export function TeacherManagement({
     const result = await response.json();
 
     if (!response.ok) {
-      throw new Error(result.error ?? "帳號儲存失敗。");
+      throw new Error(result.error ?? "儲存教師帳號失敗。");
     }
 
     return result.account as TeacherAccount;
@@ -168,12 +174,11 @@ export function TeacherManagement({
       return;
     }
     if (!draft.accountId && draft.password.length < 4) {
-      setMessage("新增教師時，初始密碼至少 4 碼。");
+      setMessage("初始密碼至少需要 4 個字。");
       return;
     }
 
-    const teacherId =
-      draft.teacherId || (draft.accountRole === "teacher" ? `teacher-${Date.now()}` : "");
+    const teacherId = draft.teacherId || (draft.accountRole === "teacher" ? `teacher-${Date.now()}` : "");
 
     try {
       if (draft.accountRole === "teacher") {
@@ -192,14 +197,14 @@ export function TeacherManagement({
           : [saved, ...current]
       );
       setDraft(emptyDraft);
-      setMessage(draft.accountId ? "教師資料已更新。" : "已新增教師，並建立可登入帳號。");
+      setMessage(draft.accountId ? "教師資料已更新。" : "已新增教師，登入帳號也建立完成。");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "教師資料儲存失敗。");
     }
   }
 
   async function remove(account: TeacherAccount) {
-    if (!window.confirm(`確定要刪除 ${account.name} 嗎？此動作會移除登入帳號。`)) return;
+    if (!window.confirm(`確定要刪除 ${account.name} 嗎？此教師將無法登入，相關任務會改為尚未指派。`)) return;
 
     const response = await fetch(`/api/teacher-accounts?id=${account.id}`, { method: "DELETE" });
     const result = await response.json();
@@ -211,7 +216,7 @@ export function TeacherManagement({
 
     if (account.teacherId) onDeleteTeacher(account.teacherId);
     setAccounts((current) => current.filter((item) => item.id !== account.id));
-    setMessage("教師資料與登入帳號已刪除。");
+    setMessage("教師資料已刪除。");
   }
 
   async function toggleEnabled(account: TeacherAccount) {
@@ -235,7 +240,8 @@ export function TeacherManagement({
         name: teacher.name,
         role: teacher.role,
         teachingScope: teacher.teachingScope ?? "",
-        enabled: saved.enabled
+        enabled: saved.enabled,
+        avatar: teacher.avatar
       });
     }
     setMessage(saved.enabled ? "教師帳號已啟用。" : "教師帳號已停用。");
@@ -249,7 +255,7 @@ export function TeacherManagement({
           <h2 className="text-4xl font-black text-ink">教師管理</h2>
         </div>
         <p className="rounded-md bg-forest-50 px-4 py-3 text-lg font-bold text-forest-800">
-          新增教師時同步建立登入帳號；停用後將無法登入。
+          主任可建立教師資料與登入帳號，停用後教師將無法登入。
         </p>
       </div>
 
@@ -274,15 +280,15 @@ export function TeacherManagement({
             setDraft((current) => ({ ...current, accountRole: event.target.value as AuthRole }))
           }
         >
-          <option value="teacher">teacher</option>
-          <option value="admin">admin</option>
+          <option value="teacher">教師</option>
+          <option value="admin">主任</option>
         </select>
         <input
           className="rounded-md border border-forest-100 bg-white px-3 py-3 text-lg font-bold"
           type="password"
           value={draft.password}
           onChange={(event) => setDraft((current) => ({ ...current, password: event.target.value }))}
-          placeholder={draft.accountId ? "新密碼，可空白" : "初始密碼"}
+          placeholder={draft.accountId ? "留空代表不變更密碼" : "初始密碼"}
         />
         <label className="flex items-center justify-center gap-2 rounded-md border border-forest-100 bg-white px-3 py-3 text-lg font-black">
           <input
@@ -298,7 +304,7 @@ export function TeacherManagement({
           onChange={(event) =>
             setDraft((current) => ({ ...current, teachingScope: event.target.value }))
           }
-          placeholder="任教班級或負責領域，可空白"
+          placeholder="任教班級或負責領域，例如：五年級、資訊、生活教育"
         />
       </div>
 
@@ -340,9 +346,11 @@ export function TeacherManagement({
                     <p className="text-base font-bold text-stone-600">{account.email}</p>
                   </div>
                   <p className="text-lg font-bold text-stone-700">
-                    任務 {stats?.total ?? 0} 件，完成 {stats?.done ?? 0} 件，進行中 {stats?.doing ?? 0} 件
+                    任務 {stats?.total ?? 0} 件，完成 {stats?.done ?? 0}，進行中 {stats?.doing ?? 0}
                   </p>
-                  <p className="text-lg font-black text-forest-800">{account.role}</p>
+                  <p className="text-lg font-black text-forest-800">
+                    {account.role === "admin" ? "主任" : "教師"}
+                  </p>
                   <p className="text-lg font-black text-forest-800">
                     {account.enabled ? "啟用" : "停用"}
                   </p>
@@ -360,14 +368,14 @@ export function TeacherManagement({
                 </div>
                 {teacherTasks.length > 0 && (
                   <div className="mt-3 rounded-md bg-white p-3">
-                    <p className="text-base font-black text-forest-700">被指派任務</p>
+                    <p className="text-base font-black text-forest-700">指派任務</p>
                     <div className="mt-2 flex flex-wrap gap-2">
                       {teacherTasks.slice(0, 6).map((task) => (
                         <span
                           key={task.id}
                           className="rounded-md bg-forest-50 px-3 py-2 text-base font-bold text-ink"
                         >
-                          {task.title}｜{task.status}
+                          {task.title} / {task.status}
                         </span>
                       ))}
                     </div>

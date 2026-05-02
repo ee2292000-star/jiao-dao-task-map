@@ -20,7 +20,7 @@ import { balanceTaskAssignments } from "@/lib/decisionSupport";
 import { getDaysLeft } from "@/lib/reminders";
 import { generateEventTemplateTasks, savedEventTemplates } from "@/lib/templates";
 import { deleteCloudTask, deleteCloudTeacher, isSupabaseConfigured, loadCloudData, saveCloudData } from "@/lib/supabaseClient";
-import type { Event, StickyNote, Task, Teacher } from "@/lib/types";
+import type { Event, StickyNote, Task, Teacher, TeacherAccount } from "@/lib/types";
 import type { Priority, StickyColor } from "@/lib/types";
 
 const navItems = [
@@ -85,6 +85,18 @@ function normalizeTeacher(teacher: Partial<Teacher>): Teacher {
     teachingScope: teacher.teachingScope ?? "",
     enabled: teacher.enabled ?? true
   };
+}
+
+function teacherFromAccount(account: TeacherAccount): Teacher | null {
+  if (account.role !== "teacher" || !account.enabled) return null;
+  const name = account.name || "未命名教師";
+  return normalizeTeacher({
+    id: account.teacherId || `teacher-${account.id}`,
+    name,
+    role: "教師",
+    avatar: teacherAvatar(name),
+    enabled: account.enabled
+  });
 }
 
 function isLegacySeededTeacher(teacher: Partial<Teacher>) {
@@ -384,6 +396,41 @@ export default function Home() {
     if (!isHydrated) return;
     window.localStorage.setItem(TEACHERS_STORAGE_KEY, JSON.stringify(teachers));
   }, [isHydrated, teachers]);
+
+  useEffect(() => {
+    if (!isHydrated || currentUser?.role !== "admin") return;
+
+    async function syncTeacherAccountsToRoster() {
+      try {
+        const response = await fetch("/api/teacher-accounts");
+        const result = await response.json();
+        if (!response.ok) return;
+
+        const accountTeachers = ((result.accounts ?? []) as TeacherAccount[])
+          .map(teacherFromAccount)
+          .filter(Boolean) as Teacher[];
+
+        if (!accountTeachers.length) return;
+
+        setTeachers((current) => {
+          const nextTeachers = mergeUniqueById(current, accountTeachers);
+          if (nextTeachers.length === current.length) return current;
+          writeStoredArray(TEACHERS_STORAGE_KEY, nextTeachers);
+          if (dataSource === "cloud") {
+            void saveCloudData({ teachers: nextTeachers, events, tasks, notes }).catch(() => {
+              setActionMessage("雲端同步暫時失敗，已保留本機資料。");
+            });
+          }
+          return nextTeachers;
+        });
+      } catch {
+        // The roster still works from local/cloud teachers; account sync is only a convenience bridge.
+      }
+    }
+
+    void syncTeacherAccountsToRoster();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.role, isHydrated]);
 
   useEffect(() => {
     if (!isHydrated || dataSource !== "cloud") return;
