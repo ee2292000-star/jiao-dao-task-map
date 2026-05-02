@@ -1,6 +1,7 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { signOut, useSession } from "next-auth/react";
 import { ArchitecturePanel } from "@/components/ArchitecturePanel";
 import { ActivityDatabase } from "@/components/ActivityDatabase";
 import { CommandBar } from "@/components/CommandBar";
@@ -15,12 +16,11 @@ import { TemplatePanel } from "@/components/TemplatePanel";
 import { Timeline } from "@/components/Timeline";
 import { WorkloadPanel } from "@/components/WorkloadPanel";
 import { events as initialEvents, initialTasks, stickyNotes, teachers as initialTeachers } from "@/lib/initialData";
-import { AUTH_STORAGE_KEY } from "@/lib/auth";
 import { balanceTaskAssignments } from "@/lib/decisionSupport";
 import { getDaysLeft } from "@/lib/reminders";
 import { generateEventTemplateTasks, savedEventTemplates } from "@/lib/templates";
 import { deleteCloudTask, deleteCloudTeacher, isSupabaseConfigured, loadCloudData, saveCloudData } from "@/lib/supabaseClient";
-import type { AuthUser, Event, StickyNote, Task, Teacher } from "@/lib/types";
+import type { Event, StickyNote, Task, Teacher } from "@/lib/types";
 import type { Priority, StickyColor } from "@/lib/types";
 
 const navItems = [
@@ -32,7 +32,7 @@ const navItems = [
   ["共筆便利貼", "sticky"],
   ["提醒中心", "dashboard"],
   ["活動模板", "templates"],
-  ["教師端", "teacher"],
+  ["教師端預覽", "teacher"],
   ["活動資料庫", "archive"],
   ["系統設定", "settings"]
 ];
@@ -208,12 +208,12 @@ function getFilterLabel(filter: string) {
   if (filter === "done") return "已完成";
   if (filter === "doing") return "進行中";
   if (filter === "overdue") return "逾期任務";
-  if (filter === "unassigned") return "未指派任務";
-  if (filter === "comments") return "未回覆留言";
-  if (filter === "confirm") return "未確認事項";
+  if (filter === "unassigned") return "尚未指派";
+  if (filter === "comments") return "有留言";
+  if (filter === "confirm") return "待確認";
   if (filter.startsWith("teacher:")) return "教師任務篩選";
   if (filter.startsWith("event:")) return "活動任務篩選";
-  return "目前篩選條件";
+  return "自訂篩選";
 }
 
 function getAssignedTeacherId(task: Task) {
@@ -232,8 +232,16 @@ export default function Home() {
   const [actionMessage, setActionMessage] = useState("");
   const [isHydrated, setIsHydrated] = useState(false);
   const [dataSource, setDataSource] = useState<"cloud" | "local">("local");
-  const [currentUser, setCurrentUser] = useState<Omit<AuthUser, "password"> | null>(null);
-  const [isAuthChecked, setIsAuthChecked] = useState(false);
+  const { data: session, status: sessionStatus } = useSession();
+  const currentUser = session?.user
+    ? {
+        id: session.user.id,
+        name: session.user.name ?? session.user.email ?? "使用者",
+        username: session.user.email ?? "",
+        role: session.user.role
+      }
+    : null;
+  const isAuthChecked = sessionStatus !== "loading";
 
   const activeTeacher = useMemo(
     () => {
@@ -261,27 +269,10 @@ export default function Home() {
   const selectedTask = tasks.find((task) => task.id === selectedTaskId);
 
   useEffect(() => {
-    const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
-    if (!raw) {
+    if (sessionStatus === "unauthenticated") {
       window.location.href = "/login";
-      return;
     }
-
-    try {
-      const user = JSON.parse(raw) as Omit<AuthUser, "password">;
-      setCurrentUser(user);
-      if (user.role === "teacher") {
-        setCurrentMode("teacher");
-        setActiveTeacherId(user.id);
-      }
-    } catch {
-      window.localStorage.removeItem(AUTH_STORAGE_KEY);
-      window.location.href = "/login";
-      return;
-    }
-
-    setIsAuthChecked(true);
-  }, []);
+  }, [sessionStatus]);
 
   useEffect(() => {
     if (currentUser?.role !== "teacher") return;
@@ -337,7 +328,7 @@ export default function Home() {
                 : current || (nextTeachers.find((teacher) => teacher.enabled !== false)?.id ?? "")
             );
             setDataSource("cloud");
-            setActionMessage("已連上 Supabase 雲端資料庫。");
+            setActionMessage("已連線 Supabase，資料同步完成。");
             setIsHydrated(true);
 
             await saveCloudData({
@@ -347,12 +338,12 @@ export default function Home() {
               notes: nextNotes
             });
             setActionMessage(
-              hasLocalData ? "已連上 Supabase，並同步本機暫存資料。" : "已連上 Supabase 雲端資料庫。"
+              hasLocalData ? "已連線 Supabase，並同步本機資料。" : "已連線 Supabase，資料同步完成。"
             );
             return;
           }
         } catch {
-          setActionMessage("雲端資料庫暫時無法讀取，已改用本機保存。");
+          setActionMessage("雲端資料暫時無法同步，已改用本機資料。");
         }
       }
 
@@ -368,7 +359,7 @@ export default function Home() {
       );
       setDataSource("local");
       setIsHydrated(true);
-      if (hasLocalData) setActionMessage("已載入本機保存資料。");
+      if (hasLocalData) setActionMessage("已載入本機資料。");
     }
 
     void hydrateData();
@@ -399,7 +390,7 @@ export default function Home() {
 
     const timeout = window.setTimeout(() => {
       void saveCloudData({ teachers, events, tasks, notes }).catch(() => {
-        setActionMessage("雲端保存暫時失敗，資料仍保存在本機瀏覽器。");
+        setActionMessage("雲端同步暫時失敗，已保留本機資料。");
       });
     }, 500);
 
@@ -436,7 +427,7 @@ export default function Home() {
           : task
       )
     );
-    setActionMessage(ownerId ? "已完成改派，任務負責人已更新。" : "已清除負責人。");
+    setActionMessage(ownerId ? "已更新任務負責人。" : "已改為尚未指派。");
   }
 
   function handleDueDateChange(taskId: string, dueDate: string) {
@@ -445,7 +436,7 @@ export default function Home() {
         task.id === taskId ? { ...task, dueDate, updatedAt: getTodayString() } : task
       )
     );
-    setActionMessage("截止日已更新。");
+    setActionMessage("截止日期已更新。");
   }
 
   function handleUpdateTask(taskId: string, changes: Partial<Task>) {
@@ -465,13 +456,13 @@ export default function Home() {
       writeStoredArray(TASKS_STORAGE_KEY, nextTasks);
       if (dataSource === "cloud") {
         void saveCloudData({ teachers, events, tasks: nextTasks, notes }).catch(() => {
-          setActionMessage("雲端保存暫時失敗，資料仍保存在本機瀏覽器。");
+          setActionMessage("雲端同步暫時失敗，已保留本機資料。");
         });
       }
       return nextTasks;
     });
     setSelectedTaskId(taskId);
-    setActionMessage("任務已更新，並同步到看板、摘要與教師端。");
+    setActionMessage("任務已更新，相關區塊已同步。");
   }
 
   function handleDeleteTask(taskId: string) {
@@ -483,7 +474,7 @@ export default function Home() {
       );
       if (dataSource === "cloud") {
         void deleteCloudTask(taskId).catch(() => {
-          setActionMessage("雲端刪除暫時失敗，已先從本機畫面移除。");
+          setActionMessage("雲端刪除暫時失敗，已先更新本機資料。");
         });
       }
       return nextTasks;
@@ -496,7 +487,7 @@ export default function Home() {
       writeStoredArray(EVENTS_STORAGE_KEY, nextEvents);
       return nextEvents;
     });
-    setActionMessage("任務已刪除，並同步更新看板與摘要。");
+    setActionMessage("任務已刪除。");
   }
 
   function handleCreateTeacher(input: {
@@ -518,13 +509,13 @@ export default function Home() {
       writeStoredArray(TEACHERS_STORAGE_KEY, nextTeachers);
       if (dataSource === "cloud") {
         void saveCloudData({ teachers: nextTeachers, events, tasks, notes }).catch(() => {
-          setActionMessage("雲端保存暫時失敗，資料仍保存在本機瀏覽器。");
+          setActionMessage("雲端同步暫時失敗，已保留本機資料。");
         });
       }
       return nextTeachers;
     });
     if (!activeTeacherId && newTeacher.enabled !== false) setActiveTeacherId(newTeacher.id);
-    setActionMessage("已新增教師，任務指派選單已更新。");
+    setActionMessage("已新增教師，任務指派選單已同步。");
   }
 
   function handleUpdateTeacher(
@@ -547,7 +538,7 @@ export default function Home() {
       writeStoredArray(TEACHERS_STORAGE_KEY, nextTeachers);
       if (dataSource === "cloud") {
         void saveCloudData({ teachers: nextTeachers, events, tasks, notes }).catch(() => {
-          setActionMessage("雲端保存暫時失敗，資料仍保存在本機瀏覽器。");
+          setActionMessage("雲端同步暫時失敗，已保留本機資料。");
         });
       }
       return nextTeachers;
@@ -597,7 +588,7 @@ export default function Home() {
     if (activeTeacherId === teacherId) {
       setActiveTeacherId(teachers.find((teacher) => teacher.id !== teacherId && teacher.enabled !== false)?.id ?? "");
     }
-    setActionMessage("教師已刪除，原本指派任務已改為尚未指派。");
+    setActionMessage("教師已刪除，相關任務已改為尚未指派。");
   }
 
   function handleQuickComment(taskId: string, body: string) {
@@ -620,7 +611,7 @@ export default function Home() {
           : task
       )
     );
-    setActionMessage("已新增快速留言。");
+    setActionMessage("已新增留言。");
   }
 
   function handleRemind(message: string) {
@@ -636,26 +627,26 @@ export default function Home() {
         return { ...task, dueDate: nextDate.toISOString().slice(0, 10), updatedAt: getTodayString() };
       })
     );
-    setActionMessage("已延後 2 天，提醒暫時降壓。");
+    setActionMessage("已將截止日延後 2 天。");
   }
 
   function handleBalanceTasks() {
     setTasks((current) => balanceTaskAssignments(current, teachers));
-    setActionMessage("已依目前負荷平均分配非關鍵任務。");
+    setActionMessage("已依目前負荷重新平均分配任務。");
   }
 
   function handleStickyToggle(noteId: string) {
     setNotes((current) =>
       current.map((note) => (note.id === noteId ? { ...note, done: !note.done } : note))
     );
-    setActionMessage("便利貼狀態已保存。");
+    setActionMessage("便利貼狀態已更新。");
   }
 
   function handleStickyAssign(noteId: string, teacherId: string) {
     setNotes((current) =>
       current.map((note) => (note.id === noteId ? { ...note, assigneeId: teacherId } : note))
     );
-    setActionMessage("便利貼已改派。");
+    setActionMessage("便利貼已更新指派對象。");
   }
 
   function handleConvertSticky(noteId: string) {
@@ -665,8 +656,8 @@ export default function Home() {
     const taskId = `task-from-${note.id}`;
     const newTask: Task = {
       id: taskId,
-      title: `便利貼轉任務：${note.body}`,
-      description: "由共筆便利貼轉為正式任務，後續可進看板追蹤。",
+      title: `便利貼任務：${note.body}`,
+      description: "由共筆便利貼轉為正式任務，可再補充說明與留言。",
       assignees: note.assigneeId ? [note.assigneeId] : [],
       ownerIds: note.assigneeId ? [note.assigneeId] : [],
       assignedTo: note.assigneeId,
@@ -702,7 +693,7 @@ export default function Home() {
     const newTask: Task = {
       id: taskId,
       title: input.title,
-      description: input.description || "快速新增任務，可再補充說明與留言。",
+      description: input.description || "快速新增任務，可稍後補充說明與留言。",
       assignees: input.assigneeId ? [input.assigneeId] : [],
       ownerIds: input.assigneeId ? [input.assigneeId] : [],
       assignedTo: input.assigneeId || undefined,
@@ -723,7 +714,7 @@ export default function Home() {
       writeStoredArray(TASKS_STORAGE_KEY, nextTasks);
       if (dataSource === "cloud") {
         void saveCloudData({ teachers, events, tasks: nextTasks, notes }).catch(() => {
-          setActionMessage("雲端保存暫時失敗，資料仍保存在本機瀏覽器。");
+          setActionMessage("雲端同步暫時失敗，已保留本機資料。");
         });
       }
       return nextTasks;
@@ -731,7 +722,7 @@ export default function Home() {
     setSelectedTaskId(taskId);
     setActionMessage(
       taskMatchesFilter(newTask, filter)
-        ? "已新增任務，並同步到任務看板、今日重點與教師端。"
+        ? "任務已新增，並同步到任務看板。"
         : `任務已新增，但目前篩選條件「${getFilterLabel(filter)}」未顯示此任務。`
     );
   }
@@ -759,12 +750,12 @@ export default function Home() {
       writeStoredArray(NOTES_STORAGE_KEY, nextNotes);
       if (dataSource === "cloud") {
         void saveCloudData({ teachers, events, tasks, notes: nextNotes }).catch(() => {
-          setActionMessage("雲端保存暫時失敗，資料仍保存在本機瀏覽器。");
+          setActionMessage("雲端同步暫時失敗，已保留本機資料。");
         });
       }
       return nextNotes;
     });
-    setActionMessage("已新增便利貼，之後可直接轉正式任務。");
+    setActionMessage("已新增便利貼，必要時可轉為正式任務。");
   }
 
   function handleCreateEvent(input: {
@@ -807,7 +798,7 @@ export default function Home() {
       writeStoredArray(EVENTS_STORAGE_KEY, nextEvents);
       if (dataSource === "cloud") {
         void saveCloudData({ teachers, events: nextEvents, tasks: [...newTasks, ...tasks], notes }).catch(() => {
-          setActionMessage("雲端保存暫時失敗，資料仍保存在本機瀏覽器。");
+          setActionMessage("雲端同步暫時失敗，已保留本機資料。");
         });
       }
       return nextEvents;
@@ -819,7 +810,7 @@ export default function Home() {
     });
     setFilter(`event:${eventId}`);
     setSelectedTaskId(newTasks[0]?.id ?? selectedTaskId);
-    setActionMessage(`已新增活動「${input.name}」，並產生 ${newTasks.length} 個子任務。`);
+    setActionMessage(`已新增活動「${input.name}」，並產生 ${newTasks.length} 筆任務。`);
   }
 
   function handleAddReviewNote(eventId: string, note: string) {
@@ -828,7 +819,7 @@ export default function Home() {
         event.id === eventId ? { ...event, reviewNotes: [...event.reviewNotes, note] } : event
       )
     );
-    setActionMessage("已新增活動檢討紀錄。");
+    setActionMessage("已新增檢討紀錄。");
   }
 
   function handleDuplicateEvent(eventId: string) {
@@ -871,14 +862,14 @@ export default function Home() {
       startDate: nextStart.toISOString().slice(0, 10),
       endDate: nextEnd.toISOString().slice(0, 10),
       taskIds: nextTasks.map((task) => task.id),
-      reviewNotes: [`由「${sourceEvent.name}」複製，請依今年狀況調整分工與時程。`]
+      reviewNotes: [`由「${sourceEvent.name}」複製建立，可作為下一次活動參考。`]
     };
 
     setEvents((current) => [...current, nextEvent]);
     setTasks((current) => [...nextTasks, ...current]);
     setFilter(`event:${nextEventId}`);
     setSelectedTaskId(nextTasks[0]?.id ?? selectedTaskId);
-    setActionMessage(`已複製「${sourceEvent.name}」成新活動，並產生 ${nextTasks.length} 個待辦任務。`);
+    setActionMessage(`已複製「${sourceEvent.name}」，並建立 ${nextTasks.length} 筆任務。`);
   }
 
   function handleResetLocalData() {
@@ -894,19 +885,18 @@ export default function Home() {
     setFilter("all");
     setSelectedTaskId("");
     setActiveTeacherId("");
-    setActionMessage("已清空本機資料。");
+    setActionMessage("本機資料已清空。");
   }
 
   function handleLogout() {
-    window.localStorage.removeItem(AUTH_STORAGE_KEY);
-    window.location.href = "/login";
+    void signOut({ callbackUrl: "/login" });
   }
 
   if (!isAuthChecked || !currentUser) {
     return (
       <main className="grid min-h-screen place-items-center bg-rice p-6 text-ink">
         <div className="rounded-lg bg-white p-6 text-2xl font-black text-forest-800 shadow-soft">
-          正在檢查登入狀態...
+          正在確認登入狀態...
         </div>
       </main>
     );
@@ -918,7 +908,7 @@ export default function Home() {
         <aside className="border-r border-forest-100 bg-forest-900 p-5 text-white">
           <div className="rounded-lg bg-forest-700 p-4">
             <p className="text-lg font-bold text-forest-100">學校教導處</p>
-            <h1 className="mt-2 text-4xl font-black leading-tight">教導處任務地圖 v2</h1>
+            <h1 className="mt-2 text-4xl font-black leading-tight">教導處任務地圖</h1>
           </div>
           <div className="mt-5 rounded-lg bg-rice p-4 text-ink">
             <p className="text-lg font-black text-forest-800">目前模式</p>
@@ -946,7 +936,7 @@ export default function Home() {
                   className="mt-3 w-full rounded-md border border-forest-100 bg-white px-3 py-3 text-lg font-black"
                   value={activeTeacherId}
                   onChange={(event) => setActiveTeacherId(event.target.value)}
-                  aria-label="選擇目前登入身分"
+                  aria-label="選擇教師端預覽身分"
                 >
                   {teachers
                     .filter((teacher) => teacher.enabled !== false)
@@ -988,11 +978,11 @@ export default function Home() {
             </button>
           </div>
           <div className="mt-4 rounded-lg bg-forest-700 p-4">
-            <p className="text-lg font-bold text-forest-50">本機資料</p>
+            <p className="text-lg font-bold text-forest-50">資料狀態</p>
             <p className="mt-1 text-base font-bold text-forest-100">
               {dataSource === "cloud"
-                ? "目前已連接 Supabase，資料會同步到雲端。"
-                : "操作會自動保存在這台電腦的瀏覽器。"}
+                ? "目前已連線 Supabase，資料會同步保存。"
+                : "目前使用本機資料，適合單機測試。"}
             </p>
             <button
               className="mt-3 w-full rounded-md bg-rice px-4 py-2 text-base font-black text-ink"
@@ -1007,7 +997,7 @@ export default function Home() {
           <header className="mb-6 flex flex-col justify-between gap-4 rounded-lg bg-warm p-5 shadow-soft xl:flex-row xl:items-center">
             <div>
               <p className="text-xl font-bold text-forest-700">
-                {effectiveMode === "director" ? "優先順序 · 畫面決策 · 教師減壓" : "只看自己的任務 · 少壓力 · 好更新"}
+                {effectiveMode === "director" ? "優先順序、決策支援、協作留痕" : "我的任務、低壓提醒、狀態回報"}
               </p>
               <h2 className="mt-2 text-5xl font-black leading-tight text-ink">
                 {effectiveMode === "director"
@@ -1026,7 +1016,7 @@ export default function Home() {
                 />
               )}
               <div className="rounded-lg bg-white px-5 py-3 text-right">
-                <p className="text-lg font-bold text-stone-600">今日</p>
+                <p className="text-lg font-bold text-stone-600">隞</p>
                 <p className="text-3xl font-black text-forest-700">
                   {getTodayString().replaceAll("-", "/")}
                 </p>
@@ -1051,7 +1041,7 @@ export default function Home() {
                   <p className="text-xl font-black text-forest-700">教師端預覽</p>
                   <h2 className="mt-1 text-4xl font-black text-ink">尚未建立教師資料</h2>
                   <p className="mt-2 text-lg font-bold text-stone-700">
-                    請先到系統設定新增教師，再切換教師端查看我的任務。
+                    請先到系統設定新增教師，之後就能預覽該教師的我的任務。
                   </p>
                 </section>
               )
@@ -1084,7 +1074,7 @@ export default function Home() {
 
                 {selectedTask && (
                   <section className="rounded-lg border border-forest-100 bg-white p-5 shadow-soft">
-                    <p className="text-xl font-bold text-forest-700">目前開啟的任務卡</p>
+                    <p className="text-xl font-bold text-forest-700">?桀????遙?</p>
                     <h2 className="text-3xl font-black">{selectedTask.title}</h2>
                     <p className="mt-2 text-lg font-bold text-stone-700">{selectedTask.description}</p>
                   </section>
@@ -1144,3 +1134,4 @@ export default function Home() {
     </main>
   );
 }
+

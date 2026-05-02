@@ -5,8 +5,7 @@ export type AuthRole = "admin" | "teacher";
 export type AuthUser = {
   id: string;
   name: string;
-  username: string;
-  password: string;
+  email: string;
   role: AuthRole;
 };
 
