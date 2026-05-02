@@ -48,8 +48,8 @@ export function TeacherPortal({
       <section className="rounded-lg bg-white p-5 shadow-soft">
         <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-end">
           <div>
-            <p className="text-xl font-bold text-forest-700">教師端</p>
-            <h2 className="text-5xl font-black text-ink">我的任務</h2>
+            <p className="text-xl font-bold text-forest-700">任務摘要</p>
+            <h2 className="text-4xl font-black text-ink">今天需要留意的工作</h2>
           </div>
           <p className="rounded-md bg-forest-50 px-4 py-3 text-xl font-black text-forest-800">
             {teacher.name}，這裡只顯示與你有關的任務。
