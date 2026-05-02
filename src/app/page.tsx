@@ -1132,7 +1132,7 @@ export default function Home() {
               </p>
               <h2 className="mt-2 text-5xl font-black leading-tight text-ink">
                 {effectiveMode === "director"
-                  ? "教導處運作中心（Action First Dashboard）"
+                  ? "教導處運作中心"
                   : "我的任務"}
               </h2>
             </div>
@@ -1147,7 +1147,7 @@ export default function Home() {
                 />
               )}
               <div className="rounded-lg bg-white px-5 py-3 text-right">
-                <p className="text-lg font-bold text-stone-600">隞</p>
+                <p className="text-lg font-bold text-stone-600">今日</p>
                 <p className="text-3xl font-black text-forest-700">
                   {getTodayString().replaceAll("-", "/")}
                 </p>
@@ -1205,7 +1205,7 @@ export default function Home() {
 
                 {selectedTask && (
                   <section className="rounded-lg border border-forest-100 bg-white p-5 shadow-soft">
-                    <p className="text-xl font-bold text-forest-700">?桀????遙?</p>
+                    <p className="text-xl font-bold text-forest-700">目前開啟的任務卡</p>
                     <h2 className="text-3xl font-black">{selectedTask.title}</h2>
                     <p className="mt-2 text-lg font-bold text-stone-700">{selectedTask.description}</p>
                   </section>

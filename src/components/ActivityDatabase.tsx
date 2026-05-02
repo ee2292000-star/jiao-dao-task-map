@@ -14,6 +14,12 @@ type ActivityDatabaseProps = {
   onFilterEvent: (eventId: string) => void;
 };
 
+function statusLabel(status: Task["status"]) {
+  if (status === "done") return "完成";
+  if (status === "doing") return "進行中";
+  return "待辦";
+}
+
 function ownerNames(task: Task, teachers: Teacher[]) {
   const names = teachers
     .filter((teacher) => task.ownerIds.includes(teacher.id))
@@ -43,92 +49,90 @@ export function ActivityDatabase({
       <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-end">
         <div>
           <p className="text-xl font-bold text-forest-700">活動資料庫</p>
-          <h2 className="text-4xl font-black">檢討紀錄與下次複製</h2>
+          <h2 className="text-4xl font-black">活動紀錄與檢討留存</h2>
         </div>
         <p className="rounded-md bg-forest-50 px-4 py-3 text-lg font-black text-forest-800">
-          保存任務、分工、留言、附件與檢討
+          完成的任務、分工與檢討會保留下來，之後可複製成下一次活動。
         </p>
       </div>
 
       <div className="mt-5 grid gap-5">
-        {events.length ? events.map((event) => {
-          const eventTasks = tasks.filter((task) => task.eventId === event.id);
-          const commentsCount = eventTasks.reduce((total, task) => total + task.comments.length, 0);
-          const attachmentsCount = eventTasks.reduce(
-            (total, task) => total + task.attachments.length,
-            0
-          );
-          const progress = getEventProgress(event, tasks);
+        {events.length ? (
+          events.map((event) => {
+            const eventTasks = tasks.filter((task) => task.eventId === event.id);
+            const commentsCount = eventTasks.reduce((total, task) => total + task.comments.length, 0);
+            const attachmentsCount = eventTasks.reduce((total, task) => total + task.attachments.length, 0);
+            const progress = getEventProgress(event, tasks);
 
-          return (
-            <article key={event.id} className="rounded-lg border border-forest-100 bg-warm p-5">
-              <div className="grid gap-4 xl:grid-cols-[1fr_300px]">
-                <div>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <h3 className="text-3xl font-black text-ink">{event.name}</h3>
-                    <span className="rounded-md bg-white px-3 py-1 text-lg font-black text-forest-700">
-                      {progress}%
-                    </span>
+            return (
+              <article key={event.id} className="rounded-lg border border-forest-100 bg-warm p-5">
+                <div className="grid gap-4 xl:grid-cols-[1fr_300px]">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <h3 className="text-3xl font-black text-ink">{event.name}</h3>
+                      <span className="rounded-md bg-white px-3 py-1 text-lg font-black text-forest-700">
+                        {progress}%
+                      </span>
+                    </div>
+                    <p className="mt-2 text-lg font-bold text-stone-700">
+                      {event.startDate} 至 {event.endDate} / 任務 {eventTasks.length} 件 / 留言 {commentsCount} 則 / 附件 {attachmentsCount} 件
+                    </p>
+                    <div className="mt-4 grid gap-2 lg:grid-cols-2">
+                      {eventTasks.slice(0, 6).map((task) => (
+                        <div key={task.id} className="rounded-md bg-white p-3">
+                          <p className="text-lg font-black">{task.title.replace(`${event.name} - `, "")}</p>
+                          <p className="mt-1 text-base font-bold text-stone-600">
+                            {ownerNames(task, teachers)} / {statusLabel(task.status)}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <p className="mt-2 text-lg font-bold text-stone-700">
-                    {event.startDate} 至 {event.endDate}｜任務 {eventTasks.length} 件｜留言{" "}
-                    {commentsCount} 則｜附件 {attachmentsCount} 份
-                  </p>
-                  <div className="mt-4 grid gap-2 lg:grid-cols-2">
-                    {eventTasks.slice(0, 6).map((task) => (
-                      <div key={task.id} className="rounded-md bg-white p-3">
-                        <p className="text-lg font-black">{task.title.replace(`${event.name} - `, "")}</p>
-                        <p className="mt-1 text-base font-bold text-stone-600">
-                          {ownerNames(task, teachers)}｜{task.status}
+
+                  <div className="rounded-lg bg-white p-4">
+                    <h4 className="text-2xl font-black text-forest-700">檢討紀錄</h4>
+                    <div className="mt-3 space-y-2">
+                      {event.reviewNotes.length ? (
+                        event.reviewNotes.map((note, index) => (
+                          <p key={`${event.id}-${index}`} className="rounded-md bg-rice p-3 text-base font-bold">
+                            {note}
+                          </p>
+                        ))
+                      ) : (
+                        <p className="rounded-md bg-rice p-3 text-base font-bold text-stone-600">
+                          尚未新增檢討紀錄。
                         </p>
-                      </div>
-                    ))}
+                      )}
+                    </div>
+                    <textarea
+                      className="mt-3 min-h-24 w-full rounded-md border border-forest-100 bg-warm px-3 py-2 text-base font-bold"
+                      value={drafts[event.id] ?? ""}
+                      onChange={(inputEvent) =>
+                        setDrafts((current) => ({
+                          ...current,
+                          [event.id]: inputEvent.target.value
+                        }))
+                      }
+                      placeholder="新增檢討，例如：下次活動前兩週先確認場地與音響。"
+                      aria-label="新增活動檢討紀錄"
+                    />
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <ActionButton tone="primary" onClick={() => submitReview(event.id)}>
+                        新增檢討
+                      </ActionButton>
+                      <ActionButton tone="quiet" onClick={() => onFilterEvent(event.id)}>
+                        查看任務
+                      </ActionButton>
+                      <ActionButton tone="warm" onClick={() => onDuplicateEvent(event.id)}>
+                        複製成新活動
+                      </ActionButton>
+                    </div>
                   </div>
                 </div>
-
-                <div className="rounded-lg bg-white p-4">
-                  <h4 className="text-2xl font-black text-forest-700">檢討紀錄</h4>
-                  <div className="mt-3 space-y-2">
-                    {event.reviewNotes.length ? (
-                      event.reviewNotes.map((note, index) => (
-                        <p key={`${event.id}-${index}`} className="rounded-md bg-rice p-3 text-base font-bold">
-                          {note}
-                        </p>
-                      ))
-                    ) : (
-                      <p className="rounded-md bg-rice p-3 text-base font-bold text-stone-600">
-                        尚未新增檢討紀錄。
-                      </p>
-                    )}
-                  </div>
-                  <textarea
-                    className="mt-3 min-h-24 w-full rounded-md border border-forest-100 bg-warm px-3 py-2 text-base font-bold"
-                    value={drafts[event.id] ?? ""}
-                    onChange={(inputEvent) =>
-                      setDrafts((current) => ({
-                        ...current,
-                        [event.id]: inputEvent.target.value
-                      }))
-                    }
-                    placeholder="新增檢討，例如：家長動線下次需提前公告"
-                    aria-label="新增活動檢討"
-                  />
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <ActionButton tone="primary" onClick={() => submitReview(event.id)}>
-                      新增檢討
-                    </ActionButton>
-                    <ActionButton tone="quiet" onClick={() => onFilterEvent(event.id)}>
-                      查看任務
-                    </ActionButton>
-                    <ActionButton tone="warm" onClick={() => onDuplicateEvent(event.id)}>
-                      複製成新活動
-                    </ActionButton>
-                  </div>
-                </div>
-              </div>
-            </article>
-          );
-        }) : (
+              </article>
+            );
+          })
+        ) : (
           <p className="rounded-lg bg-rice p-5 text-2xl font-black text-forest-800">
             尚未建立活動
           </p>

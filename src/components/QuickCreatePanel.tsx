@@ -112,13 +112,13 @@ export function QuickCreatePanel({
     <section className="grid gap-5 xl:grid-cols-3" id="quick-create">
       <div className="rounded-lg border border-forest-100 bg-white p-5 shadow-soft">
         <p className="text-xl font-black text-forest-700">快速新增任務</p>
-        <h2 className="mt-1 text-3xl font-black text-ink">想到就放進地圖</h2>
+        <h2 className="mt-1 text-3xl font-black text-ink">臨時工作先記下來</h2>
         <div className="mt-4 grid gap-3">
           <input
             className="rounded-md border border-forest-100 bg-warm px-4 py-3 text-xl font-bold"
             value={taskInput.title}
             onChange={(event) => setTaskInput((current) => ({ ...current, title: event.target.value }))}
-            placeholder="任務名稱，例如：五年級校外教學保險確認"
+            placeholder="任務名稱，例如：五年級戶外教學保險確認"
             aria-label="任務名稱"
           />
           <textarea
@@ -137,7 +137,7 @@ export function QuickCreatePanel({
               onChange={(event) =>
                 setTaskInput((current) => ({ ...current, assigneeId: event.target.value }))
               }
-              aria-label="負責人"
+              aria-label="負責教師"
             >
               <option value="">先不指派</option>
               {teacherOptions.map((teacher) => (
@@ -154,7 +154,7 @@ export function QuickCreatePanel({
               onChange={(event) =>
                 setTaskInput((current) => ({ ...current, dueDate: event.target.value }))
               }
-              aria-label="截止日"
+              aria-label="截止日期"
             />
             <select
               className="rounded-md border border-forest-100 bg-warm px-3 py-3 text-base font-black"
@@ -165,10 +165,10 @@ export function QuickCreatePanel({
                   priority: event.target.value as Priority
                 }))
               }
-              aria-label="優先度"
+              aria-label="優先順序"
             >
               <option value="normal">一般</option>
-              <option value="high">高優先</option>
+              <option value="high">優先</option>
               <option value="low">低</option>
             </select>
             <label className="flex items-center justify-center gap-2 rounded-md border border-forest-100 bg-warm px-3 py-3 text-base font-black">
@@ -188,13 +188,13 @@ export function QuickCreatePanel({
 
       <div className="rounded-lg border border-forest-100 bg-white p-5 shadow-soft">
         <p className="text-xl font-black text-forest-700">快速新增便利貼</p>
-        <h2 className="mt-1 text-3xl font-black text-ink">先記下來，也能轉任務</h2>
+        <h2 className="mt-1 text-3xl font-black text-ink">先記下來，之後可轉任務</h2>
         <div className="mt-4 grid gap-3">
           <textarea
             className="min-h-32 rounded-md border border-forest-100 bg-warm px-4 py-3 text-xl font-bold"
             value={noteInput.body}
             onChange={(event) => setNoteInput((current) => ({ ...current, body: event.target.value }))}
-            placeholder="便利貼內容，例如：請確認活動座位圖"
+            placeholder="便利貼內容，例如：請確認畢業典禮座位圖"
             aria-label="便利貼內容"
           />
           <div className="grid gap-3 md:grid-cols-3">
@@ -204,7 +204,7 @@ export function QuickCreatePanel({
               onChange={(event) =>
                 setNoteInput((current) => ({ ...current, assigneeId: event.target.value }))
               }
-              aria-label="便利貼指派"
+              aria-label="便利貼指派對象"
             >
               <option value="">先不指派</option>
               {teacherOptions.map((teacher) => (
@@ -221,7 +221,7 @@ export function QuickCreatePanel({
               onChange={(event) =>
                 setNoteInput((current) => ({ ...current, dueDate: event.target.value }))
               }
-              aria-label="便利貼截止日"
+              aria-label="便利貼截止日期"
             />
             <select
               className="rounded-md border border-forest-100 bg-warm px-3 py-3 text-base font-black"
@@ -232,7 +232,7 @@ export function QuickCreatePanel({
                   color: event.target.value as StickyColor
                 }))
               }
-              aria-label="便利貼顏色"
+              aria-label="便利貼分類"
             >
               <option value="yellow">黃：提醒</option>
               <option value="pink">粉：討論</option>
@@ -245,8 +245,8 @@ export function QuickCreatePanel({
       </div>
 
       <div className="rounded-lg border border-forest-100 bg-white p-5 shadow-soft">
-        <p className="text-xl font-black text-forest-700">快速新增活動</p>
-        <h2 className="mt-1 text-3xl font-black text-ink">套用模板自動生任務</h2>
+        <p className="text-xl font-black text-forest-700">新增活動</p>
+        <h2 className="mt-1 text-3xl font-black text-ink">建立活動準備清單</h2>
         <div className="mt-4 grid gap-3">
           <input
             className="rounded-md border border-forest-100 bg-warm px-4 py-3 text-xl font-bold"
@@ -254,7 +254,7 @@ export function QuickCreatePanel({
             onChange={(event) =>
               setEventInput((current) => ({ ...current, name: event.target.value }))
             }
-            placeholder="活動名稱，例如：學年度重要活動"
+            placeholder="活動名稱，例如：114學年度畢業典禮"
             aria-label="活動名稱"
           />
           <div className="grid gap-3 md:grid-cols-2">
@@ -274,7 +274,7 @@ export function QuickCreatePanel({
               onChange={(event) =>
                 setEventInput((current) => ({ ...current, templateId: event.target.value }))
               }
-              aria-label="活動模板"
+              aria-label="準備清單模板"
             >
               {templates.map((template) => (
                 <option key={template.id} value={template.id}>
@@ -284,9 +284,9 @@ export function QuickCreatePanel({
             </select>
           </div>
           <p className="rounded-md bg-forest-50 p-3 text-base font-bold text-forest-800">
-            會自動產生邀請卡、流程表、主持稿、場地布置、音響、攝影、海報、頒獎名單等子任務。
+            選擇活動類型後，系統會自動建立邀請、流程、場地、通知等準備工作，主任可再調整負責人與截止日。
           </p>
-          <ActionButton tone="primary" onClick={submitEvent}>新增活動並產生任務</ActionButton>
+          <ActionButton tone="primary" onClick={submitEvent}>新增活動與準備工作</ActionButton>
         </div>
       </div>
     </section>
