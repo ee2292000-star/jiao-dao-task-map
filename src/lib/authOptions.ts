@@ -1,109 +1,103 @@
-import { SupabaseAdapter } from "@auth/supabase-adapter";
 import type { NextAuthOptions } from "next-auth";
-import EmailProvider from "next-auth/providers/email";
+import CredentialsProvider from "next-auth/providers/credentials";
 
-function userRole(email?: string | null) {
-  const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase();
-  return email?.toLowerCase() === adminEmail ? "admin" : "teacher";
+type LoginUser = {
+  id: string;
+  name: string;
+  email: string;
+  role: "admin" | "teacher";
+};
+
+type TeacherAccount = {
+  id?: string;
+  name: string;
+  email: string;
+  password: string;
+  enabled?: boolean;
+};
+
+function normalizeEmail(email?: string | null) {
+  return email?.trim().toLowerCase() ?? "";
 }
 
-function escapeHtml(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
+function getTeacherAccounts() {
+  if (!process.env.TEACHER_ACCOUNTS) return [];
 
-async function sendResendMagicLink({
-  identifier,
-  url,
-  from
-}: {
-  identifier: string;
-  url: string;
-  from: string;
-}) {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) {
-    throw new Error("Missing RESEND_API_KEY environment variable.");
-  }
-
-  const safeUrl = escapeHtml(url);
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      from,
-      to: identifier,
-      subject: "登入教導處任務地圖",
-      html: `
-        <div style="font-family: Arial, sans-serif; line-height: 1.7; color: #1f2933;">
-          <h1 style="font-size: 24px; margin-bottom: 12px;">教導處任務地圖</h1>
-          <p>請點擊下方按鈕完成登入。</p>
-          <p>
-            <a href="${safeUrl}" style="display: inline-block; background: #2f6846; color: white; padding: 12px 18px; border-radius: 8px; text-decoration: none; font-weight: 700;">
-              登入系統
-            </a>
-          </p>
-          <p style="color: #6b7280;">如果不是你本人操作，可以忽略這封信。</p>
-        </div>
-      `,
-      text: `請開啟以下連結登入教導處任務地圖：${url}`
-    })
-  });
-
-  if (!response.ok) {
-    throw new Error(`Resend failed: ${await response.text()}`);
+  try {
+    const parsed = JSON.parse(process.env.TEACHER_ACCOUNTS);
+    return Array.isArray(parsed) ? (parsed as TeacherAccount[]) : [];
+  } catch {
+    return [];
   }
 }
 
-const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+function findTeacherAccount(email: string, password: string): LoginUser | null {
+  const teacher = getTeacherAccounts().find(
+    (account) =>
+      account.enabled !== false &&
+      normalizeEmail(account.email) === email &&
+      account.password === password
+  );
+
+  if (!teacher) return null;
+
+  return {
+    id: teacher.id ?? normalizeEmail(teacher.email),
+    name: teacher.name,
+    email: normalizeEmail(teacher.email),
+    role: "teacher"
+  };
+}
 
 export const authOptions: NextAuthOptions = {
-  adapter:
-    supabaseUrl && supabaseServiceRoleKey
-      ? SupabaseAdapter({
-          url: supabaseUrl,
-          secret: supabaseServiceRoleKey
-        })
-      : undefined,
   providers: [
-    EmailProvider({
-      from: process.env.EMAIL_FROM ?? "onboarding@resend.dev",
-      maxAge: 10 * 60,
-      async sendVerificationRequest({ identifier, url, provider }) {
-        await sendResendMagicLink({
-          identifier,
-          url,
-          from: provider.from
-        });
+    CredentialsProvider({
+      name: "EmailPassword",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" }
+      },
+      async authorize(credentials) {
+        const email = normalizeEmail(credentials?.email);
+        const password = credentials?.password ?? "";
+        const adminEmail = normalizeEmail(process.env.ADMIN_EMAIL);
+        const adminPassword = process.env.ADMIN_PASSWORD ?? "";
+
+        if (email && password && email === adminEmail && password === adminPassword) {
+          return {
+            id: "admin",
+            name: process.env.ADMIN_NAME ?? "主任",
+            email,
+            role: "admin"
+          } as LoginUser;
+        }
+
+        return findTeacherAccount(email, password);
       }
     })
   ],
   pages: {
-    signIn: "/login",
-    verifyRequest: "/login?sent=1"
+    signIn: "/login"
   },
   session: {
     strategy: "jwt"
   },
   callbacks: {
     async jwt({ token, user }) {
-      if (user?.email) {
-        token.role = userRole(user.email);
+      if (user) {
+        const loginUser = user as LoginUser;
+        token.sub = loginUser.id;
+        token.email = loginUser.email;
+        token.name = loginUser.name;
+        token.role = loginUser.role;
       }
-      if (!token.role) token.role = userRole(token.email);
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.sub ?? token.email ?? "";
+        session.user.name = token.name ?? "";
+        session.user.email = token.email ?? "";
         session.user.role = token.role === "admin" ? "admin" : "teacher";
       }
       return session;
