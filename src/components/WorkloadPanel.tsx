@@ -16,11 +16,13 @@ export function WorkloadPanel({ teachers, tasks }: WorkloadPanelProps) {
     <section className="rounded-lg bg-white p-5 shadow-soft" id="workload">
       <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-end">
         <div>
-          <p className="text-xl font-bold text-forest-700">協助主任判斷分工是否需要支援</p>
+          <p className="text-xl font-bold text-forest-700">協作分工與支援判斷</p>
           <h2 className="text-4xl font-black">人員分工</h2>
         </div>
         <div className="rounded-lg bg-amber-50 p-4 text-lg font-black text-amber-900">
-          {suggestions.length ? suggestions.map((suggestion) => <p key={suggestion}>{suggestion}</p>) : "尚未建立教師資料"}
+          {suggestions.length
+            ? suggestions.map((suggestion) => <p key={suggestion}>{suggestion}</p>)
+            : "目前沒有需要調整分工的提醒。"}
         </div>
       </div>
       <div className="mt-5 grid gap-3 lg:grid-cols-2">

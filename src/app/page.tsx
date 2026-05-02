@@ -180,6 +180,71 @@ function mergeUniqueById<T extends { id: string }>(primary: T[], secondary: T[])
   return [...primary, ...secondary.filter((item) => !seen.has(item.id))];
 }
 
+function getTeacherMergeKey(teacher: Partial<Teacher>) {
+  return (teacher.name ?? "").trim().toLocaleLowerCase() || teacher.id || "";
+}
+
+function getTeacherIdMap(teachers: Teacher[]) {
+  const keyToCanonicalId = new Map<string, string>();
+  const idMap = new Map<string, string>();
+
+  teachers.forEach((teacher) => {
+    const key = getTeacherMergeKey(teacher);
+    if (!keyToCanonicalId.has(key)) keyToCanonicalId.set(key, teacher.id);
+    idMap.set(teacher.id, keyToCanonicalId.get(key) ?? teacher.id);
+  });
+
+  return idMap;
+}
+
+function dedupeTeachersByName(teachers: Teacher[]) {
+  const byName = new Map<string, Teacher>();
+
+  teachers.forEach((teacher) => {
+    const normalizedTeacher = normalizeTeacher(teacher);
+    const key = getTeacherMergeKey(normalizedTeacher);
+    const existing = byName.get(key);
+
+    if (!existing) {
+      byName.set(key, normalizedTeacher);
+      return;
+    }
+
+    byName.set(key, {
+      ...existing,
+      role: existing.role || normalizedTeacher.role,
+      avatar: existing.avatar || normalizedTeacher.avatar,
+      teachingScope: existing.teachingScope || normalizedTeacher.teachingScope,
+      enabled: existing.enabled !== false || normalizedTeacher.enabled !== false
+    });
+  });
+
+  return Array.from(byName.values());
+}
+
+function remapTaskTeacherIds(tasks: Task[], teacherIdMap: Map<string, string>) {
+  return tasks.map((task) => {
+    const ownerIds = Array.from(new Set(task.ownerIds.map((id) => teacherIdMap.get(id) ?? id)));
+    const assignees = Array.from(new Set(task.assignees.map((id) => teacherIdMap.get(id) ?? id)));
+    const assignedTo = task.assignedTo ? teacherIdMap.get(task.assignedTo) ?? task.assignedTo : ownerIds[0];
+
+    return {
+      ...task,
+      ownerIds,
+      assignees,
+      assignedTo
+    };
+  });
+}
+
+function compactRosterData(teachers: Teacher[], tasks: Task[]) {
+  const teacherIdMap = getTeacherIdMap(teachers);
+  return {
+    teachers: dedupeTeachersByName(teachers),
+    tasks: remapTaskTeacherIds(tasks, teacherIdMap)
+  };
+}
+
 function filterTasks(tasks: Task[], filter: string) {
   if (filter === "week") {
     return tasks.filter((task) => {
@@ -254,10 +319,11 @@ export default function Home() {
       }
     : null;
   const isAuthChecked = sessionStatus !== "loading";
+  const visibleTeachers = useMemo(() => dedupeTeachersByName(teachers), [teachers]);
 
   const activeTeacher = useMemo(
     () => {
-      const found = teachers.find((teacher) => teacher.id === activeTeacherId && teacher.enabled !== false);
+      const found = visibleTeachers.find((teacher) => teacher.id === activeTeacherId && teacher.enabled !== false);
       if (found) return found;
       if (currentUser?.role === "teacher") {
         return {
@@ -270,7 +336,7 @@ export default function Home() {
       }
       return undefined;
     },
-    [activeTeacherId, currentUser, teachers]
+    [activeTeacherId, currentUser, visibleTeachers]
   );
   const permittedTasks =
     currentUser?.role === "teacher"
@@ -324,8 +390,9 @@ export default function Home() {
             const cloudNotes = hasCloudData
               ? cloudData.notes.filter((note) => !isLegacySeededNote(note))
               : stickyNotes;
-            const nextTeachers = hasLocalData ? mergeUniqueById(localTeachers, cloudTeachers) : cloudTeachers;
-            const nextTasks = hasLocalData ? mergeUniqueById(localTasks, cloudTasks) : cloudTasks;
+            const mergedTeachers = hasLocalData ? mergeUniqueById(localTeachers, cloudTeachers) : cloudTeachers;
+            const mergedTasks = hasLocalData ? mergeUniqueById(localTasks, cloudTasks) : cloudTasks;
+            const { teachers: nextTeachers, tasks: nextTasks } = compactRosterData(mergedTeachers, mergedTasks);
             const nextEvents = hasLocalData ? mergeUniqueById(localEvents, cloudEvents) : cloudEvents;
             const nextNotes = hasLocalData ? mergeUniqueById(localNotes, cloudNotes) : cloudNotes;
 
@@ -359,15 +426,16 @@ export default function Home() {
         }
       }
 
-      setTasks(localTasks);
+      const { teachers: nextLocalTeachers, tasks: nextLocalTasks } = compactRosterData(localTeachers, localTasks);
+      setTasks(nextLocalTasks);
       setEvents(localEvents);
       setNotes(localNotes);
-      setTeachers(localTeachers);
-      setSelectedTaskId(localTasks[0]?.id ?? "");
+      setTeachers(nextLocalTeachers);
+      setSelectedTaskId(nextLocalTasks[0]?.id ?? "");
       setActiveTeacherId((current) =>
         currentUser?.role === "teacher"
           ? currentUser.id
-          : current || (localTeachers.find((teacher) => teacher.enabled !== false)?.id ?? "")
+          : current || (nextLocalTeachers.find((teacher) => teacher.enabled !== false)?.id ?? "")
       );
       setDataSource("local");
       setIsHydrated(true);
@@ -413,7 +481,7 @@ export default function Home() {
         if (!accountTeachers.length) return;
 
         setTeachers((current) => {
-          const nextTeachers = mergeUniqueById(current, accountTeachers);
+          const nextTeachers = dedupeTeachersByName(mergeUniqueById(current, accountTeachers));
           if (nextTeachers.length === current.length) return current;
           writeStoredArray(TEACHERS_STORAGE_KEY, nextTeachers);
           if (dataSource === "cloud") {
@@ -554,7 +622,21 @@ export default function Home() {
       avatar: input.avatar ?? teacherAvatar(input.name)
     });
     setTeachers((current) => {
-      const nextTeachers = [newTeacher, ...current];
+      const existing = current.find(
+        (teacher) => getTeacherMergeKey(teacher) === getTeacherMergeKey(newTeacher)
+      );
+      const nextTeachers = existing
+        ? current.map((teacher) =>
+            teacher.id === existing.id
+              ? {
+                  ...teacher,
+                  ...newTeacher,
+                  id: teacher.id,
+                  teachingScope: newTeacher.teachingScope || teacher.teachingScope
+                }
+              : teacher
+          )
+        : [newTeacher, ...current];
       writeStoredArray(TEACHERS_STORAGE_KEY, nextTeachers);
       if (dataSource === "cloud") {
         void saveCloudData({ teachers: nextTeachers, events, tasks, notes }).catch(() => {
@@ -680,7 +762,7 @@ export default function Home() {
   }
 
   function handleBalanceTasks() {
-    setTasks((current) => balanceTaskAssignments(current, teachers));
+    setTasks((current) => balanceTaskAssignments(current, visibleTeachers));
     setActionMessage("已依目前負荷重新平均分配任務。");
   }
 
@@ -980,14 +1062,14 @@ export default function Home() {
               </button>
             </div>
             {effectiveMode === "teacher" && currentUser.role === "admin" && (
-              teachers.filter((teacher) => teacher.enabled !== false).length ? (
+              visibleTeachers.filter((teacher) => teacher.enabled !== false).length ? (
                 <select
                   className="mt-3 w-full rounded-md border border-forest-100 bg-white px-3 py-3 text-lg font-black"
                   value={activeTeacherId}
                   onChange={(event) => setActiveTeacherId(event.target.value)}
                   aria-label="選擇教師端預覽身分"
                 >
-                  {teachers
+                  {visibleTeachers
                     .filter((teacher) => teacher.enabled !== false)
                     .map((teacher) => (
                       <option key={teacher.id} value={teacher.id}>
@@ -1058,7 +1140,7 @@ export default function Home() {
               {currentUser.role === "admin" && (
                 <CommandBar
                   tasks={permittedTasks}
-                  teachers={teachers}
+                  teachers={visibleTeachers}
                   onOpenTask={setSelectedTaskId}
                   onFilterTeacher={(teacherId) => setFilter(`teacher:${teacherId}`)}
                   onAssignMode={() => setFilter("unassigned")}
@@ -1080,7 +1162,7 @@ export default function Home() {
                   teacher={activeTeacher}
                   tasks={permittedTasks}
                   notes={notes}
-                  teachers={teachers}
+                  teachers={visibleTeachers}
                   onStatusChange={handleStatusChange}
                   onQuickComment={handleQuickComment}
                   onToggleNote={handleStickyToggle}
@@ -1098,7 +1180,7 @@ export default function Home() {
               <>
                 <Dashboard
                   tasks={tasks}
-                  teachers={teachers}
+                  teachers={visibleTeachers}
                   events={events}
                   notes={notes}
                   filter={filter}
@@ -1114,7 +1196,7 @@ export default function Home() {
                 />
 
                 <QuickCreatePanel
-                  teachers={teachers}
+                  teachers={visibleTeachers}
                   templates={savedEventTemplates}
                   onCreateTask={handleCreateTask}
                   onCreateNote={handleCreateNote}
@@ -1132,7 +1214,7 @@ export default function Home() {
                 <Timeline events={events} tasks={tasks} />
                 <KanbanBoard
                   tasks={visibleTasks}
-                  teachers={teachers}
+                  teachers={visibleTeachers}
                   onStatusChange={handleStatusChange}
                   onPriorityChange={handlePriorityChange}
                   onAssign={handleAssign}
@@ -1143,10 +1225,10 @@ export default function Home() {
                   onDeleteTask={handleDeleteTask}
                   onOpenTask={setSelectedTaskId}
                 />
-                <WorkloadPanel teachers={teachers} tasks={tasks} />
+                <WorkloadPanel teachers={visibleTeachers} tasks={tasks} />
                 <StickyWall
                   notes={notes}
-                  teachers={teachers}
+                  teachers={visibleTeachers}
                   onToggle={handleStickyToggle}
                   onConvert={handleConvertSticky}
                   onAssign={handleStickyAssign}
@@ -1156,20 +1238,20 @@ export default function Home() {
                   <TeacherHome
                     teacher={activeTeacher}
                     tasks={tasks}
-                    teachers={teachers}
+                    teachers={visibleTeachers}
                     onStatusChange={handleStatusChange}
                   />
                 )}
                 <ActivityDatabase
                   events={events}
                   tasks={tasks}
-                  teachers={teachers}
+                  teachers={visibleTeachers}
                   onAddReviewNote={handleAddReviewNote}
                   onDuplicateEvent={handleDuplicateEvent}
                   onFilterEvent={(eventId) => setFilter(`event:${eventId}`)}
                 />
                 <TeacherManagement
-                  teachers={teachers}
+                  teachers={visibleTeachers}
                   tasks={tasks}
                   onCreateTeacher={handleCreateTeacher}
                   onUpdateTeacher={handleUpdateTeacher}
