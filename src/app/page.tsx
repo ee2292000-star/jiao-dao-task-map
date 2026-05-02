@@ -10,6 +10,7 @@ import { KanbanBoard } from "@/components/KanbanBoard";
 import { QuickCreatePanel } from "@/components/QuickCreatePanel";
 import { StickyWall } from "@/components/StickyWall";
 import { TeacherHome } from "@/components/TeacherHome";
+import { TeacherAccountManagement } from "@/components/TeacherAccountManagement";
 import { TeacherManagement } from "@/components/TeacherManagement";
 import { TeacherPortal } from "@/components/TeacherPortal";
 import { TemplatePanel } from "@/components/TemplatePanel";
@@ -1125,6 +1126,7 @@ export default function Home() {
                   onUpdateTeacher={handleUpdateTeacher}
                   onDeleteTeacher={handleDeleteTeacher}
                 />
+                <TeacherAccountManagement teachers={teachers} />
                 <ArchitecturePanel />
               </>
             )}

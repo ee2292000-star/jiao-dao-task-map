@@ -1,5 +1,7 @@
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
+import { verifyPassword } from "@/lib/password";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 type LoginUser = {
   id: string;
@@ -49,6 +51,28 @@ function findTeacherAccount(email: string, password: string): LoginUser | null {
   };
 }
 
+async function findTeacherAccountFromDatabase(email: string, password: string): Promise<LoginUser | null> {
+  if (!supabaseAdmin) return null;
+
+  const { data, error } = await supabaseAdmin
+    .from("teacher_accounts")
+    .select("id, teacher_id, name, email, password_hash, enabled")
+    .eq("email", email)
+    .maybeSingle();
+
+  if (error || !data || data.enabled === false) return null;
+
+  const passwordHash = data.password_hash as string;
+  if (!verifyPassword(password, passwordHash)) return null;
+
+  return {
+    id: (data.teacher_id as string | null) ?? (data.id as string),
+    name: data.name as string,
+    email: data.email as string,
+    role: "teacher"
+  };
+}
+
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
@@ -71,6 +95,9 @@ export const authOptions: NextAuthOptions = {
             role: "admin"
           } as LoginUser;
         }
+
+        const databaseUser = await findTeacherAccountFromDatabase(email, password);
+        if (databaseUser) return databaseUser;
 
         return findTeacherAccount(email, password);
       }

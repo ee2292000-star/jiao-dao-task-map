@@ -9,6 +9,16 @@ export type AuthUser = {
   role: AuthRole;
 };
 
+export type TeacherAccount = {
+  id: string;
+  teacherId?: string;
+  name: string;
+  email: string;
+  enabled: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 export type TaskStatus = "todo" | "doing" | "done";
 
 export type Priority = "low" | "normal" | "high";
