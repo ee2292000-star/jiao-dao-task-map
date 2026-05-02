@@ -29,6 +29,11 @@ function normalizeRole(role?: string): AuthRole {
   return role === "admin" ? "admin" : "teacher";
 }
 
+function getDatabaseLoginId(data: { id: string; teacher_id?: string | null; role?: string | null }) {
+  if (normalizeRole(data.role ?? undefined) === "admin") return data.id;
+  return data.teacher_id ?? `teacher-${data.id}`;
+}
+
 function getEnvTeacherAccounts() {
   if (!process.env.TEACHER_ACCOUNTS) return [];
 
@@ -73,7 +78,11 @@ async function findDatabaseAccount(email: string, password: string): Promise<Log
   if (!verifyPassword(password, passwordHash)) return null;
 
   return {
-    id: (data.teacher_id as string | null) ?? (data.id as string),
+    id: getDatabaseLoginId({
+      id: data.id as string,
+      teacher_id: data.teacher_id as string | null,
+      role: data.role as string | null
+    }),
     name: data.name as string,
     email: data.email as string,
     role: normalizeRole(data.role as string | undefined)

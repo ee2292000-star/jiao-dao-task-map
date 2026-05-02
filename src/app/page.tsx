@@ -297,6 +297,23 @@ function getAssignedTeacherId(task: Task) {
   return task.assignedTo ?? task.ownerIds[0] ?? task.assignees[0] ?? "";
 }
 
+function taskBelongsToTeacher(task: Task, teacherIds: string[]) {
+  return teacherIds.some(
+    (teacherId) =>
+      task.assignedTo === teacherId ||
+      task.ownerIds.includes(teacherId) ||
+      task.assignees.includes(teacherId)
+  );
+}
+
+function getTeacherIdentityIds(userId: string, userName: string, teachers: Teacher[]) {
+  const ids = new Set([userId]);
+  teachers
+    .filter((teacher) => teacher.name === userName)
+    .forEach((teacher) => ids.add(teacher.id));
+  return Array.from(ids);
+}
+
 export default function Home() {
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [notes, setNotes] = useState<StickyNote[]>(stickyNotes);
@@ -323,7 +340,12 @@ export default function Home() {
 
   const activeTeacher = useMemo(
     () => {
-      const found = visibleTeachers.find((teacher) => teacher.id === activeTeacherId && teacher.enabled !== false);
+      const found = visibleTeachers.find(
+        (teacher) =>
+          teacher.enabled !== false &&
+          (teacher.id === activeTeacherId ||
+            (currentUser?.role === "teacher" && teacher.name === currentUser.name))
+      );
       if (found) return found;
       if (currentUser?.role === "teacher") {
         return {
@@ -338,9 +360,16 @@ export default function Home() {
     },
     [activeTeacherId, currentUser, visibleTeachers]
   );
+  const currentTeacherIds = useMemo(
+    () =>
+      currentUser?.role === "teacher"
+        ? getTeacherIdentityIds(currentUser.id, currentUser.name, visibleTeachers)
+        : [],
+    [currentUser, visibleTeachers]
+  );
   const permittedTasks =
     currentUser?.role === "teacher"
-      ? tasks.filter((task) => getAssignedTeacherId(task) === currentUser.id)
+      ? tasks.filter((task) => taskBelongsToTeacher(task, currentTeacherIds))
       : tasks;
   const effectiveMode = currentUser?.role === "teacher" ? "teacher" : currentMode;
   const visibleTasks = filterTasks(permittedTasks, filter);
@@ -1160,6 +1189,7 @@ export default function Home() {
               activeTeacher ? (
                 <TeacherPortal
                   teacher={activeTeacher}
+                  teacherIds={currentUser.role === "teacher" ? currentTeacherIds : [activeTeacher.id]}
                   tasks={permittedTasks}
                   notes={notes}
                   teachers={visibleTeachers}

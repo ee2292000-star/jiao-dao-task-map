@@ -8,6 +8,7 @@ import { ActionButton } from "./ActionBar";
 
 type TeacherPortalProps = {
   teacher: Teacher;
+  teacherIds?: string[];
   tasks: Task[];
   notes: StickyNote[];
   teachers: Teacher[];
@@ -17,11 +18,16 @@ type TeacherPortalProps = {
 };
 
 function assignedToTeacher(task: Task, teacherId: string) {
-  return task.assignedTo === teacherId || task.ownerIds.includes(teacherId);
+  return task.assignedTo === teacherId || task.ownerIds.includes(teacherId) || task.assignees.includes(teacherId);
+}
+
+function assignedToAnyTeacherId(task: Task, teacherIds: string[]) {
+  return teacherIds.some((teacherId) => assignedToTeacher(task, teacherId));
 }
 
 export function TeacherPortal({
   teacher,
+  teacherIds,
   tasks,
   notes,
   teachers,
@@ -29,8 +35,12 @@ export function TeacherPortal({
   onQuickComment,
   onToggleNote
 }: TeacherPortalProps) {
-  const myTasks = tasks.filter((task) => assignedToTeacher(task, teacher.id));
-  const focusTasks = getTeacherFocusTasks(tasks, teacher.id, 2);
+  const identityIds = teacherIds?.length ? teacherIds : [teacher.id];
+  const myTasks = tasks.filter((task) => assignedToAnyTeacherId(task, identityIds));
+  const focusTasks = identityIds
+    .flatMap((teacherId) => getTeacherFocusTasks(tasks, teacherId, 2))
+    .filter((item, index, allItems) => allItems.findIndex((other) => other.task.id === item.task.id) === index)
+    .slice(0, 2);
   const myNotes = notes.filter((note) => note.assigneeId === teacher.id && !note.done);
 
   return (
@@ -42,7 +52,7 @@ export function TeacherPortal({
             <h2 className="text-5xl font-black text-ink">我的任務</h2>
           </div>
           <p className="rounded-md bg-forest-50 px-4 py-3 text-xl font-black text-forest-800">
-            {teacher.name}，今天先看這裡就好
+            {teacher.name}，這裡只顯示與你有關的任務。
           </p>
         </div>
       </section>
@@ -50,7 +60,7 @@ export function TeacherPortal({
       <section className="rounded-lg bg-white p-5 shadow-soft">
         <h3 className="text-4xl font-black">本週重點</h3>
         <p className="mt-1 text-lg font-bold text-stone-600">
-          系統只挑 1 到 2 件較需要先處理的任務。
+          系統會挑出最需要先看的 1 到 2 件任務。
         </p>
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
           {focusTasks.length ? (
@@ -68,7 +78,7 @@ export function TeacherPortal({
             ))
           ) : (
             <p className="rounded-lg bg-rice p-5 text-2xl font-black text-forest-800">
-              目前沒有急件，維持既有進度即可。
+              目前沒有需要優先處理的任務。
             </p>
           )}
         </div>
@@ -76,18 +86,24 @@ export function TeacherPortal({
 
       <section className="grid gap-5 xl:grid-cols-[1.4fr_0.8fr]">
         <div className="rounded-lg bg-white p-5 shadow-soft">
-          <h3 className="text-4xl font-black">我的全部任務</h3>
+          <h3 className="text-4xl font-black">我的任務列表</h3>
           <div className="mt-4 grid gap-4 lg:grid-cols-2">
-            {myTasks.map((task) => (
-              <TaskCard
-                key={task.id}
-                task={task}
-                teachers={teachers}
-                compact
-                onStatusChange={onStatusChange}
-                onQuickComment={onQuickComment}
-              />
-            ))}
+            {myTasks.length ? (
+              myTasks.map((task) => (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  teachers={teachers}
+                  compact
+                  onStatusChange={onStatusChange}
+                  onQuickComment={onQuickComment}
+                />
+              ))
+            ) : (
+              <p className="rounded-lg bg-rice p-5 text-xl font-black text-forest-800 lg:col-span-2">
+                目前沒有指派給你的任務。
+              </p>
+            )}
           </div>
         </div>
 
