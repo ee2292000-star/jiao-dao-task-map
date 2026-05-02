@@ -14,6 +14,7 @@ export type TeacherAccount = {
   teacherId?: string;
   name: string;
   email: string;
+  role: AuthRole;
   enabled: boolean;
   createdAt?: string;
   updatedAt?: string;

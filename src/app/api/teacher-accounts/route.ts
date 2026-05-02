@@ -4,8 +4,14 @@ import { authOptions } from "@/lib/authOptions";
 import { hashPassword } from "@/lib/password";
 import { isSupabaseAdminConfigured, supabaseAdmin } from "@/lib/supabaseAdmin";
 
+type AccountRole = "admin" | "teacher";
+
 function normalizeEmail(email?: string) {
   return email?.trim().toLowerCase() ?? "";
+}
+
+function normalizeRole(role?: string): AccountRole {
+  return role === "admin" ? "admin" : "teacher";
 }
 
 async function requireAdmin() {
@@ -15,10 +21,25 @@ async function requireAdmin() {
 
 function unavailable() {
   return NextResponse.json(
-    { error: "尚未設定 SUPABASE_SERVICE_ROLE_KEY，無法管理教師登入帳號。" },
+    { error: "尚未設定 SUPABASE_SERVICE_ROLE_KEY，無法管理教師帳號。" },
     { status: 503 }
   );
 }
+
+function toAccount(data: Record<string, unknown>) {
+  return {
+    id: data.id,
+    teacherId: data.teacher_id ?? undefined,
+    name: data.name,
+    email: data.email,
+    role: normalizeRole(String(data.role ?? "teacher")),
+    enabled: data.enabled,
+    createdAt: data.created_at,
+    updatedAt: data.updated_at
+  };
+}
+
+const selectColumns = "id, teacher_id, name, email, role, enabled, created_at, updated_at";
 
 export async function GET() {
   if (!(await requireAdmin())) {
@@ -28,22 +49,12 @@ export async function GET() {
 
   const { data, error } = await supabaseAdmin
     .from("teacher_accounts")
-    .select("id, teacher_id, name, email, enabled, created_at, updated_at")
+    .select(selectColumns)
     .order("name", { ascending: true });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  return NextResponse.json({
-    accounts: (data ?? []).map((account) => ({
-      id: account.id,
-      teacherId: account.teacher_id ?? undefined,
-      name: account.name,
-      email: account.email,
-      enabled: account.enabled,
-      createdAt: account.created_at,
-      updatedAt: account.updated_at
-    }))
-  });
+  return NextResponse.json({ accounts: (data ?? []).map(toAccount) });
 }
 
 export async function POST(request: Request) {
@@ -57,6 +68,7 @@ export async function POST(request: Request) {
   const email = normalizeEmail(body.email);
   const password = String(body.password ?? "");
   const teacherId = String(body.teacherId ?? "").trim() || null;
+  const role = normalizeRole(body.role);
   const enabled = body.enabled !== false;
 
   if (!name || !email || password.length < 4) {
@@ -68,26 +80,17 @@ export async function POST(request: Request) {
     .insert({
       name,
       email,
+      role,
       teacher_id: teacherId,
       password_hash: hashPassword(password),
       enabled
     })
-    .select("id, teacher_id, name, email, enabled, created_at, updated_at")
+    .select(selectColumns)
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  return NextResponse.json({
-    account: {
-      id: data.id,
-      teacherId: data.teacher_id ?? undefined,
-      name: data.name,
-      email: data.email,
-      enabled: data.enabled,
-      createdAt: data.created_at,
-      updatedAt: data.updated_at
-    }
-  });
+  return NextResponse.json({ account: toAccount(data) });
 }
 
 export async function PATCH(request: Request) {
@@ -102,6 +105,7 @@ export async function PATCH(request: Request) {
   const email = normalizeEmail(body.email);
   const password = String(body.password ?? "");
   const teacherId = String(body.teacherId ?? "").trim() || null;
+  const role = normalizeRole(body.role);
 
   if (!id || !name || !email) {
     return NextResponse.json({ error: "請輸入姓名與 Email。" }, { status: 400 });
@@ -110,6 +114,7 @@ export async function PATCH(request: Request) {
   const changes: Record<string, string | boolean | null> = {
     name,
     email,
+    role,
     teacher_id: teacherId,
     enabled: body.enabled !== false,
     updated_at: new Date().toISOString()
@@ -126,22 +131,12 @@ export async function PATCH(request: Request) {
     .from("teacher_accounts")
     .update(changes)
     .eq("id", id)
-    .select("id, teacher_id, name, email, enabled, created_at, updated_at")
+    .select(selectColumns)
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  return NextResponse.json({
-    account: {
-      id: data.id,
-      teacherId: data.teacher_id ?? undefined,
-      name: data.name,
-      email: data.email,
-      enabled: data.enabled,
-      createdAt: data.created_at,
-      updatedAt: data.updated_at
-    }
-  });
+  return NextResponse.json({ account: toAccount(data) });
 }
 
 export async function DELETE(request: Request) {

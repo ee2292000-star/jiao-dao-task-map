@@ -10,7 +10,6 @@ import { KanbanBoard } from "@/components/KanbanBoard";
 import { QuickCreatePanel } from "@/components/QuickCreatePanel";
 import { StickyWall } from "@/components/StickyWall";
 import { TeacherHome } from "@/components/TeacherHome";
-import { TeacherAccountManagement } from "@/components/TeacherAccountManagement";
 import { TeacherManagement } from "@/components/TeacherManagement";
 import { TeacherPortal } from "@/components/TeacherPortal";
 import { TemplatePanel } from "@/components/TemplatePanel";
@@ -492,18 +491,20 @@ export default function Home() {
   }
 
   function handleCreateTeacher(input: {
+    id?: string;
     name: string;
     role: string;
     teachingScope: string;
     enabled: boolean;
+    avatar?: string;
   }) {
     const newTeacher = normalizeTeacher({
-      id: `teacher-${Date.now()}`,
+      id: input.id ?? `teacher-${Date.now()}`,
       name: input.name,
       role: input.role,
       teachingScope: input.teachingScope,
       enabled: input.enabled,
-      avatar: teacherAvatar(input.name)
+      avatar: input.avatar ?? teacherAvatar(input.name)
     });
     setTeachers((current) => {
       const nextTeachers = [newTeacher, ...current];
@@ -1122,11 +1123,11 @@ export default function Home() {
                 />
                 <TeacherManagement
                   teachers={teachers}
+                  tasks={tasks}
                   onCreateTeacher={handleCreateTeacher}
                   onUpdateTeacher={handleUpdateTeacher}
                   onDeleteTeacher={handleDeleteTeacher}
                 />
-                <TeacherAccountManagement teachers={teachers} />
                 <ArchitecturePanel />
               </>
             )}

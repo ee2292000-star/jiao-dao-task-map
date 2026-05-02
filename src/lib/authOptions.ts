@@ -3,18 +3,21 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import { verifyPassword } from "@/lib/password";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
+type AuthRole = "admin" | "teacher";
+
 type LoginUser = {
   id: string;
   name: string;
   email: string;
-  role: "admin" | "teacher";
+  role: AuthRole;
 };
 
-type TeacherAccount = {
+type EnvTeacherAccount = {
   id?: string;
   name: string;
   email: string;
   password: string;
+  role?: AuthRole;
   enabled?: boolean;
 };
 
@@ -22,41 +25,45 @@ function normalizeEmail(email?: string | null) {
   return email?.trim().toLowerCase() ?? "";
 }
 
-function getTeacherAccounts() {
+function normalizeRole(role?: string): AuthRole {
+  return role === "admin" ? "admin" : "teacher";
+}
+
+function getEnvTeacherAccounts() {
   if (!process.env.TEACHER_ACCOUNTS) return [];
 
   try {
     const parsed = JSON.parse(process.env.TEACHER_ACCOUNTS);
-    return Array.isArray(parsed) ? (parsed as TeacherAccount[]) : [];
+    return Array.isArray(parsed) ? (parsed as EnvTeacherAccount[]) : [];
   } catch {
     return [];
   }
 }
 
-function findTeacherAccount(email: string, password: string): LoginUser | null {
-  const teacher = getTeacherAccounts().find(
-    (account) =>
-      account.enabled !== false &&
-      normalizeEmail(account.email) === email &&
-      account.password === password
+function findEnvTeacherAccount(email: string, password: string): LoginUser | null {
+  const account = getEnvTeacherAccounts().find(
+    (item) =>
+      item.enabled !== false &&
+      normalizeEmail(item.email) === email &&
+      item.password === password
   );
 
-  if (!teacher) return null;
+  if (!account) return null;
 
   return {
-    id: teacher.id ?? normalizeEmail(teacher.email),
-    name: teacher.name,
-    email: normalizeEmail(teacher.email),
-    role: "teacher"
+    id: account.id ?? normalizeEmail(account.email),
+    name: account.name,
+    email: normalizeEmail(account.email),
+    role: normalizeRole(account.role)
   };
 }
 
-async function findTeacherAccountFromDatabase(email: string, password: string): Promise<LoginUser | null> {
+async function findDatabaseAccount(email: string, password: string): Promise<LoginUser | null> {
   if (!supabaseAdmin) return null;
 
   const { data, error } = await supabaseAdmin
     .from("teacher_accounts")
-    .select("id, teacher_id, name, email, password_hash, enabled")
+    .select("id, teacher_id, name, email, role, password_hash, enabled")
     .eq("email", email)
     .maybeSingle();
 
@@ -69,7 +76,7 @@ async function findTeacherAccountFromDatabase(email: string, password: string): 
     id: (data.teacher_id as string | null) ?? (data.id as string),
     name: data.name as string,
     email: data.email as string,
-    role: "teacher"
+    role: normalizeRole(data.role as string | undefined)
   };
 }
 
@@ -96,10 +103,10 @@ export const authOptions: NextAuthOptions = {
           } as LoginUser;
         }
 
-        const databaseUser = await findTeacherAccountFromDatabase(email, password);
+        const databaseUser = await findDatabaseAccount(email, password);
         if (databaseUser) return databaseUser;
 
-        return findTeacherAccount(email, password);
+        return findEnvTeacherAccount(email, password);
       }
     })
   ],
