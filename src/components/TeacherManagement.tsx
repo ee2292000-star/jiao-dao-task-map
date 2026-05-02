@@ -10,6 +10,7 @@ type TeacherDraft = {
   role: string;
   teachingScope: string;
   enabled: boolean;
+  avatar?: string;
 };
 
 type ManagementDraft = {
@@ -46,6 +47,17 @@ function teacherAvatar(name: string) {
   return name.trim().slice(0, 1) || "師";
 }
 
+function teacherPayload(id: string, name: string, teachingScope: string, enabled: boolean): TeacherDraft {
+  return {
+    id,
+    name,
+    role: "教師",
+    teachingScope,
+    enabled,
+    avatar: teacherAvatar(name)
+  };
+}
+
 export function TeacherManagement({
   teachers,
   tasks,
@@ -73,6 +85,15 @@ export function TeacherManagement({
     return stats;
   }, [tasks, teachers]);
 
+  function ensureTeacherRecord(account: TeacherAccount) {
+    if (account.role !== "teacher" || !account.enabled) return;
+    const teacherId = account.teacherId || `teacher-${account.id}`;
+    const exists = teachers.some((teacher) => teacher.id === teacherId);
+    if (!exists) {
+      onCreateTeacher(teacherPayload(teacherId, account.name, "", account.enabled));
+    }
+  }
+
   async function loadAccounts() {
     setIsLoading(true);
     setMessage("");
@@ -85,11 +106,14 @@ export function TeacherManagement({
       return;
     }
 
-    setAccounts(result.accounts ?? []);
+    const nextAccounts = (result.accounts ?? []) as TeacherAccount[];
+    setAccounts(nextAccounts);
+    nextAccounts.forEach(ensureTeacherRecord);
   }
 
   useEffect(() => {
     void loadAccounts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function resetForm() {
@@ -109,7 +133,7 @@ export function TeacherManagement({
       enabled: account.enabled,
       teachingScope: teacher?.teachingScope ?? ""
     });
-    setMessage("正在編輯教師資料；密碼欄空白代表不變更。");
+    setMessage("正在編輯教師資料。密碼欄空白代表不變更。");
   }
 
   async function saveAccount(nextDraft: ManagementDraft, teacherId: string) {
@@ -153,19 +177,11 @@ export function TeacherManagement({
 
     try {
       if (draft.accountRole === "teacher") {
-        const teacherPayload = {
-          id: teacherId,
-          name,
-          role: "教師",
-          teachingScope: draft.teachingScope,
-          enabled: draft.enabled,
-          avatar: teacherAvatar(name)
-        };
-
+        const payload = teacherPayload(teacherId, name, draft.teachingScope, draft.enabled);
         if (teachers.some((teacher) => teacher.id === teacherId)) {
-          onUpdateTeacher(teacherId, teacherPayload);
+          onUpdateTeacher(teacherId, payload);
         } else {
-          onCreateTeacher(teacherPayload);
+          onCreateTeacher(payload);
         }
       }
 
@@ -199,6 +215,7 @@ export function TeacherManagement({
   }
 
   async function toggleEnabled(account: TeacherAccount) {
+    const teacher = teachers.find((item) => item.id === account.teacherId);
     const saved = await saveAccount(
       {
         accountId: account.id,
@@ -208,21 +225,18 @@ export function TeacherManagement({
         password: "",
         accountRole: account.role,
         enabled: !account.enabled,
-        teachingScope: teachers.find((teacher) => teacher.id === account.teacherId)?.teachingScope ?? ""
+        teachingScope: teacher?.teachingScope ?? ""
       },
       account.teacherId ?? ""
     );
     setAccounts((current) => current.map((item) => (item.id === saved.id ? saved : item)));
-    if (account.teacherId) {
-      const teacher = teachers.find((item) => item.id === account.teacherId);
-      if (teacher) {
-        onUpdateTeacher(account.teacherId, {
-          name: teacher.name,
-          role: teacher.role,
-          teachingScope: teacher.teachingScope ?? "",
-          enabled: saved.enabled
-        });
-      }
+    if (account.teacherId && teacher) {
+      onUpdateTeacher(account.teacherId, {
+        name: teacher.name,
+        role: teacher.role,
+        teachingScope: teacher.teachingScope ?? "",
+        enabled: saved.enabled
+      });
     }
     setMessage(saved.enabled ? "教師帳號已啟用。" : "教師帳號已停用。");
   }
@@ -319,10 +333,7 @@ export function TeacherManagement({
                 )
               : [];
             return (
-              <div
-                key={account.id}
-                className="rounded-lg border border-forest-100 bg-rice p-4"
-              >
+              <div key={account.id} className="rounded-lg border border-forest-100 bg-rice p-4">
                 <div className="grid gap-3 xl:grid-cols-[1fr_1fr_130px_170px_220px] xl:items-center">
                   <div>
                     <p className="text-2xl font-black text-ink">{account.name}</p>
