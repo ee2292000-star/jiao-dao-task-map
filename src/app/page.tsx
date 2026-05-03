@@ -752,8 +752,8 @@ export default function Home() {
   }
 
   function handleQuickComment(taskId: string, body: string) {
-    setTasks((current) =>
-      current.map((task) =>
+    setTasks((current) => {
+      const nextTasks = current.map((task) =>
         task.id === taskId
           ? {
               ...task,
@@ -762,15 +762,22 @@ export default function Home() {
                 ...task.comments,
                 {
                   id: `comment-${Date.now()}`,
-                  authorId: "t1",
+                  authorId: currentUser?.id ?? "",
                   body,
                   createdAt: getTodayString()
                 }
               ]
             }
           : task
-      )
-    );
+      );
+      writeStoredArray(TASKS_STORAGE_KEY, nextTasks);
+      if (dataSource === "cloud") {
+        void saveCloudData({ teachers, events, tasks: nextTasks, notes }).catch(() => {
+          setActionMessage("雲端同步暫時失敗，已保留本機資料。");
+        });
+      }
+      return nextTasks;
+    });
     setActionMessage("已新增留言。");
   }
 
