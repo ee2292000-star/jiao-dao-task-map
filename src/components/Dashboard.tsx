@@ -152,9 +152,14 @@ export function Dashboard({
                         <span className="ml-2 text-sm text-stone-500">分數 {score}</span>
                       </p>
                       {task.comments.length > 0 && (
-                        <p className="mt-2 inline-flex rounded-md bg-blue-50 px-3 py-1 text-base font-black text-blue-800">
+                        <button
+                          className="mt-2 inline-flex rounded-md bg-blue-50 px-3 py-1 text-base font-black text-blue-800 hover:bg-blue-100"
+                          onClick={() => setEditingTaskId(editingTaskId === task.id ? "" : task.id)}
+                          type="button"
+                          aria-expanded={editingTaskId === task.id}
+                        >
                           留言 {task.comments.length}
-                        </p>
+                        </button>
                       )}
                     </div>
                     <ActionBar subtle>
