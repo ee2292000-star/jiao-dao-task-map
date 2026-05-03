@@ -752,6 +752,7 @@ export default function Home() {
   }
 
   function handleQuickComment(taskId: string, body: string) {
+    const authorId = currentUser?.role === "teacher" ? activeTeacher?.id ?? currentUser.id : currentUser?.id ?? "";
     setTasks((current) => {
       const nextTasks = current.map((task) =>
         task.id === taskId
@@ -762,7 +763,7 @@ export default function Home() {
                 ...task.comments,
                 {
                   id: `comment-${Date.now()}`,
-                  authorId: currentUser?.id ?? "",
+                  authorId,
                   body,
                   createdAt: getTodayString()
                 }
@@ -779,6 +780,55 @@ export default function Home() {
       return nextTasks;
     });
     setActionMessage("已新增留言。");
+  }
+
+  function handleUpdateComment(taskId: string, commentId: string, body: string) {
+    const nextBody = body.trim();
+    if (!nextBody) return;
+
+    setTasks((current) => {
+      const nextTasks = current.map((task) =>
+        task.id === taskId
+          ? {
+              ...task,
+              updatedAt: getTodayString(),
+              comments: task.comments.map((comment) =>
+                comment.id === commentId ? { ...comment, body: nextBody } : comment
+              )
+            }
+          : task
+      );
+      writeStoredArray(TASKS_STORAGE_KEY, nextTasks);
+      if (dataSource === "cloud") {
+        void saveCloudData({ teachers, events, tasks: nextTasks, notes }).catch(() => {
+          setActionMessage("雲端同步暫時失敗，已保留本機資料。");
+        });
+      }
+      return nextTasks;
+    });
+    setActionMessage("留言已更新。");
+  }
+
+  function handleDeleteComment(taskId: string, commentId: string) {
+    setTasks((current) => {
+      const nextTasks = current.map((task) =>
+        task.id === taskId
+          ? {
+              ...task,
+              updatedAt: getTodayString(),
+              comments: task.comments.filter((comment) => comment.id !== commentId)
+            }
+          : task
+      );
+      writeStoredArray(TASKS_STORAGE_KEY, nextTasks);
+      if (dataSource === "cloud") {
+        void saveCloudData({ teachers, events, tasks: nextTasks, notes }).catch(() => {
+          setActionMessage("雲端同步暫時失敗，已保留本機資料。");
+        });
+      }
+      return nextTasks;
+    });
+    setActionMessage("留言已刪除。");
   }
 
   function handleRemind(message: string) {
@@ -1197,11 +1247,14 @@ export default function Home() {
                 <TeacherPortal
                   teacher={activeTeacher}
                   teacherIds={currentUser.role === "teacher" ? currentTeacherIds : [activeTeacher.id]}
+                  currentUserId={currentUser.role === "teacher" ? activeTeacher.id : currentUser.id}
                   tasks={permittedTasks}
                   notes={notes}
                   teachers={visibleTeachers}
                   onStatusChange={handleStatusChange}
                   onQuickComment={handleQuickComment}
+                  onUpdateComment={handleUpdateComment}
+                  onDeleteComment={handleDeleteComment}
                   onToggleNote={handleStickyToggle}
                 />
               ) : (
@@ -1252,11 +1305,15 @@ export default function Home() {
                 <KanbanBoard
                   tasks={visibleTasks}
                   teachers={visibleTeachers}
+                  currentUserId={currentUser.id}
+                  canManageComments={currentUser.role === "admin"}
                   onStatusChange={handleStatusChange}
                   onPriorityChange={handlePriorityChange}
                   onAssign={handleAssign}
                   onDueDateChange={handleDueDateChange}
                   onQuickComment={handleQuickComment}
+                  onUpdateComment={handleUpdateComment}
+                  onDeleteComment={handleDeleteComment}
                   onRemind={handleRemind}
                   onUpdateTask={handleUpdateTask}
                   onDeleteTask={handleDeleteTask}

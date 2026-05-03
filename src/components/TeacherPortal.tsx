@@ -9,11 +9,14 @@ import { ActionButton } from "./ActionBar";
 type TeacherPortalProps = {
   teacher: Teacher;
   teacherIds?: string[];
+  currentUserId?: string;
   tasks: Task[];
   notes: StickyNote[];
   teachers: Teacher[];
   onStatusChange: (taskId: string, status: Task["status"]) => void;
   onQuickComment: (taskId: string, body: string) => void;
+  onUpdateComment?: (taskId: string, commentId: string, body: string) => void;
+  onDeleteComment?: (taskId: string, commentId: string) => void;
   onToggleNote: (noteId: string) => void;
 };
 
@@ -28,11 +31,14 @@ function assignedToAnyTeacherId(task: Task, teacherIds: string[]) {
 export function TeacherPortal({
   teacher,
   teacherIds,
+  currentUserId,
   tasks,
   notes,
   teachers,
   onStatusChange,
   onQuickComment,
+  onUpdateComment,
+  onDeleteComment,
   onToggleNote
 }: TeacherPortalProps) {
   const identityIds = teacherIds?.length ? teacherIds : [teacher.id];
@@ -41,15 +47,15 @@ export function TeacherPortal({
     .flatMap((teacherId) => getTeacherFocusTasks(tasks, teacherId, 2))
     .filter((item, index, allItems) => allItems.findIndex((other) => other.task.id === item.task.id) === index)
     .slice(0, 2);
-  const myNotes = notes.filter((note) => note.assigneeId === teacher.id && !note.done);
+  const myNotes = notes.filter((note) => identityIds.includes(note.assigneeId ?? "") && !note.done);
 
   return (
     <div className="space-y-6" id="teacher-portal">
       <section className="rounded-lg bg-white p-5 shadow-soft">
         <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-end">
           <div>
-            <p className="text-xl font-bold text-forest-700">任務摘要</p>
-            <h2 className="text-4xl font-black text-ink">今天需要留意的工作</h2>
+            <p className="text-xl font-bold text-forest-700">我的任務、低壓提醒、狀態回報</p>
+            <h2 className="text-4xl font-black text-ink">我的任務</h2>
           </div>
           <p className="rounded-md bg-forest-50 px-4 py-3 text-xl font-black text-forest-800">
             {teacher.name}，這裡只顯示與你有關的任務。
@@ -59,9 +65,7 @@ export function TeacherPortal({
 
       <section className="rounded-lg bg-white p-5 shadow-soft">
         <h3 className="text-4xl font-black">本週重點</h3>
-        <p className="mt-1 text-lg font-bold text-stone-600">
-          系統會挑出最需要先看的 1 到 2 件任務。
-        </p>
+        <p className="mt-1 text-lg font-bold text-stone-600">系統會挑出最需要先看的 1 到 2 件任務。</p>
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
           {focusTasks.length ? (
             focusTasks.map(({ task, score, reasons }) => (
@@ -70,15 +74,18 @@ export function TeacherPortal({
                 task={task}
                 teachers={teachers}
                 compact
+                currentUserId={currentUserId}
                 onStatusChange={onStatusChange}
                 onQuickComment={onQuickComment}
+                onUpdateComment={onUpdateComment}
+                onDeleteComment={onDeleteComment}
                 priorityScore={score}
                 priorityReasons={reasons}
               />
             ))
           ) : (
             <p className="rounded-lg bg-rice p-5 text-2xl font-black text-forest-800">
-              目前沒有需要優先處理的任務。
+              目前沒有需要優先處理的任務
             </p>
           )}
         </div>
@@ -95,8 +102,11 @@ export function TeacherPortal({
                   task={task}
                   teachers={teachers}
                   compact
+                  currentUserId={currentUserId}
                   onStatusChange={onStatusChange}
                   onQuickComment={onQuickComment}
+                  onUpdateComment={onUpdateComment}
+                  onDeleteComment={onDeleteComment}
                 />
               ))
             ) : (
@@ -118,9 +128,9 @@ export function TeacherPortal({
                     <p className="text-xl font-black">{note.body}</p>
                     <p className="mt-2 text-lg font-bold text-stone-700">
                       {daysLeft === undefined
-                        ? "未設定截止日"
+                        ? "沒有設定截止日"
                         : daysLeft < 0
-                          ? `逾期 ${Math.abs(daysLeft)} 天`
+                          ? `已逾期 ${Math.abs(daysLeft)} 天`
                           : `剩 ${daysLeft} 天`}
                     </p>
                     <div className="mt-3">

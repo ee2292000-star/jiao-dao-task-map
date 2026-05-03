@@ -1,17 +1,21 @@
 "use client";
 
 import type { Task, Teacher } from "@/lib/types";
-import { TaskCard } from "./TaskCard";
 import { calculatePriorityScore, getPriorityReasons } from "@/lib/decisionSupport";
+import { TaskCard } from "./TaskCard";
 
 type KanbanBoardProps = {
   tasks: Task[];
   teachers: Teacher[];
+  currentUserId?: string;
+  canManageComments?: boolean;
   onStatusChange: (taskId: string, status: Task["status"]) => void;
   onPriorityChange: (taskId: string, priority: Task["priority"]) => void;
   onAssign: (taskId: string, ownerId: string) => void;
   onDueDateChange?: (taskId: string, dueDate: string) => void;
   onQuickComment?: (taskId: string, body: string) => void;
+  onUpdateComment?: (taskId: string, commentId: string, body: string) => void;
+  onDeleteComment?: (taskId: string, commentId: string) => void;
   onRemind?: (message: string) => void;
   onUpdateTask?: (taskId: string, changes: Partial<Task>) => void;
   onDeleteTask?: (taskId: string) => void;
@@ -27,11 +31,15 @@ const columns: { id: Task["status"]; title: string; tone: string }[] = [
 export function KanbanBoard({
   tasks,
   teachers,
+  currentUserId,
+  canManageComments = false,
   onStatusChange,
   onPriorityChange,
   onAssign,
   onDueDateChange,
   onQuickComment,
+  onUpdateComment,
+  onDeleteComment,
   onRemind,
   onUpdateTask,
   onDeleteTask,
@@ -40,13 +48,13 @@ export function KanbanBoard({
   return (
     <section className="space-y-4" id="kanban">
       <div>
-        <p className="text-xl font-bold text-forest-700">可拖曳，也可直接用卡片上的快速操作</p>
+        <p className="text-xl font-bold text-forest-700">拖曳任務即可更新狀態，也可直接在卡片上處理。</p>
         <h2 className="text-4xl font-black text-ink">任務看板</h2>
       </div>
 
       {!tasks.length && (
         <p className="rounded-lg border border-forest-100 bg-white p-5 text-2xl font-black text-forest-800 shadow-soft">
-          尚未建立任務，請先新增任務
+          尚未建立任務，請先新增任務。
         </p>
       )}
 
@@ -82,25 +90,21 @@ export function KanbanBoard({
                     task={task}
                     teachers={teachers}
                     compact
+                    currentUserId={currentUserId}
+                    canManageComments={canManageComments}
                     onStatusChange={onStatusChange}
                     onPriorityChange={onPriorityChange}
                     onAssign={onAssign}
                     onDueDateChange={onDueDateChange}
                     onQuickComment={onQuickComment}
+                    onUpdateComment={onUpdateComment}
+                    onDeleteComment={onDeleteComment}
                     onRemind={onRemind}
                     onUpdate={onUpdateTask}
                     onDelete={onDeleteTask}
                     onOpen={onOpenTask}
-                    priorityScore={calculatePriorityScore(task, {
-                      tasks,
-                      teachers,
-                      events: []
-                    })}
-                    priorityReasons={getPriorityReasons(task, {
-                      tasks,
-                      teachers,
-                      events: []
-                    })}
+                    priorityScore={calculatePriorityScore(task, { tasks, teachers, events: [] })}
+                    priorityReasons={getPriorityReasons(task, { tasks, teachers, events: [] })}
                   />
                 ))}
               </div>
