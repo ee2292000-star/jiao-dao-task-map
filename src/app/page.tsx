@@ -1248,6 +1248,11 @@ export default function Home() {
                   teacher={activeTeacher}
                   teacherIds={currentUser.role === "teacher" ? currentTeacherIds : [activeTeacher.id]}
                   currentUserId={currentUser.role === "teacher" ? activeTeacher.id : currentUser.id}
+                  editableCommentAuthorIds={
+                    currentUser.role === "teacher"
+                      ? Array.from(new Set([currentUser.id, activeTeacher.id, ...currentTeacherIds]))
+                      : [currentUser.id]
+                  }
                   tasks={permittedTasks}
                   notes={notes}
                   teachers={visibleTeachers}
@@ -1306,6 +1311,7 @@ export default function Home() {
                   tasks={visibleTasks}
                   teachers={visibleTeachers}
                   currentUserId={currentUser.id}
+                  editableCommentAuthorIds={[currentUser.id]}
                   canManageComments={currentUser.role === "admin"}
                   onStatusChange={handleStatusChange}
                   onPriorityChange={handlePriorityChange}

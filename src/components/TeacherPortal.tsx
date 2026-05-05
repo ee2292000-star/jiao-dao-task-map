@@ -10,6 +10,7 @@ type TeacherPortalProps = {
   teacher: Teacher;
   teacherIds?: string[];
   currentUserId?: string;
+  editableCommentAuthorIds?: string[];
   tasks: Task[];
   notes: StickyNote[];
   teachers: Teacher[];
@@ -32,6 +33,7 @@ export function TeacherPortal({
   teacher,
   teacherIds,
   currentUserId,
+  editableCommentAuthorIds,
   tasks,
   notes,
   teachers,
@@ -75,6 +77,7 @@ export function TeacherPortal({
                 teachers={teachers}
                 compact
                 currentUserId={currentUserId}
+                editableCommentAuthorIds={editableCommentAuthorIds}
                 onStatusChange={onStatusChange}
                 onQuickComment={onQuickComment}
                 onUpdateComment={onUpdateComment}
@@ -103,6 +106,7 @@ export function TeacherPortal({
                   teachers={teachers}
                   compact
                   currentUserId={currentUserId}
+                  editableCommentAuthorIds={editableCommentAuthorIds}
                   onStatusChange={onStatusChange}
                   onQuickComment={onQuickComment}
                   onUpdateComment={onUpdateComment}

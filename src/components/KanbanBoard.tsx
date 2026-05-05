@@ -8,6 +8,7 @@ type KanbanBoardProps = {
   tasks: Task[];
   teachers: Teacher[];
   currentUserId?: string;
+  editableCommentAuthorIds?: string[];
   canManageComments?: boolean;
   onStatusChange: (taskId: string, status: Task["status"]) => void;
   onPriorityChange: (taskId: string, priority: Task["priority"]) => void;
@@ -32,6 +33,7 @@ export function KanbanBoard({
   tasks,
   teachers,
   currentUserId,
+  editableCommentAuthorIds,
   canManageComments = false,
   onStatusChange,
   onPriorityChange,
@@ -91,6 +93,7 @@ export function KanbanBoard({
                     teachers={teachers}
                     compact
                     currentUserId={currentUserId}
+                    editableCommentAuthorIds={editableCommentAuthorIds}
                     canManageComments={canManageComments}
                     onStatusChange={onStatusChange}
                     onPriorityChange={onPriorityChange}

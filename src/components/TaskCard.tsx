@@ -11,6 +11,7 @@ type TaskCardProps = {
   teachers: Teacher[];
   compact?: boolean;
   currentUserId?: string;
+  editableCommentAuthorIds?: string[];
   canManageComments?: boolean;
   onStatusChange?: (taskId: string, status: Task["status"]) => void;
   onPriorityChange?: (taskId: string, priority: Task["priority"]) => void;
@@ -43,6 +44,7 @@ export function TaskCard({
   teachers,
   compact = false,
   currentUserId,
+  editableCommentAuthorIds = currentUserId ? [currentUserId] : [],
   canManageComments = false,
   onStatusChange,
   onPriorityChange,
@@ -141,7 +143,7 @@ export function TaskCard({
   }
 
   function canEditComment(item: Comment) {
-    return canManageComments || Boolean(currentUserId && item.authorId === currentUserId);
+    return canManageComments || editableCommentAuthorIds.includes(item.authorId);
   }
 
   return (
