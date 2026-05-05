@@ -1280,12 +1280,17 @@ export default function Home() {
                   notes={notes}
                   filter={filter}
                   actionMessage={actionMessage}
+                  currentUserId={currentUser.id}
+                  editableCommentAuthorIds={[currentUser.id]}
+                  canManageComments={currentUser.role === "admin"}
                   onFilterChange={setFilter}
                   onStatusChange={handleStatusChange}
                   onPriorityChange={handlePriorityChange}
                   onAssign={handleAssign}
                   onOpenTask={setSelectedTaskId}
                   onRemind={handleRemind}
+                  onUpdateComment={handleUpdateComment}
+                  onDeleteComment={handleDeleteComment}
                   onBalanceTasks={handleBalanceTasks}
                   onDeferTask={handleDeferTask}
                 />
