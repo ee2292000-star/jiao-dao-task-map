@@ -853,16 +853,32 @@ export default function Home() {
   }
 
   function handleStickyToggle(noteId: string) {
-    setNotes((current) =>
-      current.map((note) => (note.id === noteId ? { ...note, done: !note.done } : note))
-    );
+    setNotes((current) => {
+      const nextNotes = current.map((note) => (note.id === noteId ? { ...note, done: !note.done } : note));
+      writeStoredArray(NOTES_STORAGE_KEY, nextNotes);
+      if (dataSource === "cloud") {
+        void saveCloudData({ teachers, events, tasks, notes: nextNotes }).catch(() => {
+          setActionMessage("雲端同步暫時失敗，已保留本機資料。");
+        });
+      }
+      return nextNotes;
+    });
     setActionMessage("便利貼狀態已更新。");
   }
 
   function handleStickyAssign(noteId: string, teacherId: string) {
-    setNotes((current) =>
-      current.map((note) => (note.id === noteId ? { ...note, assigneeId: teacherId } : note))
-    );
+    setNotes((current) => {
+      const nextNotes = current.map((note) =>
+        note.id === noteId ? { ...note, assigneeId: teacherId || undefined } : note
+      );
+      writeStoredArray(NOTES_STORAGE_KEY, nextNotes);
+      if (dataSource === "cloud") {
+        void saveCloudData({ teachers, events, tasks, notes: nextNotes }).catch(() => {
+          setActionMessage("雲端同步暫時失敗，已保留本機資料。");
+        });
+      }
+      return nextNotes;
+    });
     setActionMessage("便利貼已更新指派對象。");
   }
 
@@ -949,15 +965,16 @@ export default function Home() {
     assigneeId: string;
     dueDate: string;
     color: StickyColor;
+    authorId?: string;
   }) {
     const newNote: StickyNote = {
       id: `note-${Date.now()}`,
-      eventId: "event-graduation",
-      authorId: "t1",
+      eventId: "",
+      authorId: input.authorId ?? activeTeacher?.id ?? currentUser?.id ?? "",
       color: input.color,
       body: input.body,
       assigneeId: input.assigneeId || undefined,
-      dueDate: input.dueDate,
+      dueDate: input.dueDate || undefined,
       done: false,
       createdAt: getTodayString()
     };
@@ -972,7 +989,7 @@ export default function Home() {
       }
       return nextNotes;
     });
-    setActionMessage("已新增便利貼，必要時可轉為正式任務。");
+    setActionMessage(input.assigneeId ? "已送出便利貼給指定同仁。" : "已送出便利貼給教導處主任。");
   }
 
   function handleCreateEvent(input: {
@@ -1261,6 +1278,7 @@ export default function Home() {
                   onUpdateComment={handleUpdateComment}
                   onDeleteComment={handleDeleteComment}
                   onToggleNote={handleStickyToggle}
+                  onCreateNote={handleCreateNote}
                 />
               ) : (
                 <section className="rounded-lg bg-white p-5 shadow-soft">
