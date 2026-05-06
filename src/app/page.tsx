@@ -41,6 +41,7 @@ const TASKS_STORAGE_KEY = "jiao-dao-task-map:tasks:v1";
 const NOTES_STORAGE_KEY = "jiao-dao-task-map:sticky-notes:v1";
 const EVENTS_STORAGE_KEY = "jiao-dao-task-map:events:v1";
 const TEACHERS_STORAGE_KEY = "jiao-dao-task-map:teachers:v1";
+const ALL_STICKY_RECIPIENT_ID = "__all__";
 
 function readStoredArray<T>(key: string): T[] | null {
   try {
@@ -887,13 +888,19 @@ export default function Home() {
     if (!note || note.convertedTaskId) return;
 
     const taskId = `task-from-${note.id}`;
+    const noteOwnerIds =
+      note.assigneeId === ALL_STICKY_RECIPIENT_ID
+        ? visibleTeachers.filter((teacher) => teacher.enabled !== false).map((teacher) => teacher.id)
+        : note.assigneeId
+          ? [note.assigneeId]
+          : [];
     const newTask: Task = {
       id: taskId,
       title: `便利貼任務：${note.body}`,
       description: "由共筆便利貼轉為正式任務，可再補充說明與留言。",
-      assignees: note.assigneeId ? [note.assigneeId] : [],
-      ownerIds: note.assigneeId ? [note.assigneeId] : [],
-      assignedTo: note.assigneeId,
+      assignees: noteOwnerIds,
+      ownerIds: noteOwnerIds,
+      assignedTo: noteOwnerIds[0],
       eventId: note.eventId,
       status: "todo",
       priority: "normal",
@@ -989,7 +996,13 @@ export default function Home() {
       }
       return nextNotes;
     });
-    setActionMessage(input.assigneeId ? "已送出便利貼給指定同仁。" : "已送出便利貼給教導處主任。");
+    setActionMessage(
+      input.assigneeId === ALL_STICKY_RECIPIENT_ID
+        ? "已送出便利貼給全體教師與主任。"
+        : input.assigneeId
+          ? "已送出便利貼給指定同仁。"
+          : "已送出便利貼給教導處主任。"
+    );
   }
 
   function handleCreateEvent(input: {

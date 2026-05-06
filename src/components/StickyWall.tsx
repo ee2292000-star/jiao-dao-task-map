@@ -4,6 +4,8 @@ import type { StickyNote, Teacher } from "@/lib/types";
 import { getDaysLeft } from "@/lib/reminders";
 import { ActionBar, ActionButton } from "./ActionBar";
 
+const ALL_STICKY_RECIPIENT_ID = "__all__";
+
 type StickyWallProps = {
   notes: StickyNote[];
   teachers: Teacher[];
@@ -20,6 +22,7 @@ const colorClass: Record<StickyNote["color"], string> = {
 };
 
 function teacherName(id: string | undefined, teachers: Teacher[]) {
+  if (id === ALL_STICKY_RECIPIENT_ID) return "全體教師與主任";
   if (!id) return "教導處主任";
   return teachers.find((teacher) => teacher.id === id)?.name ?? "未指定對象";
 }
@@ -81,6 +84,7 @@ export function StickyWall({ notes, teachers, onToggle, onConvert, onAssign }: S
                 aria-label="便利貼收件對象"
               >
                 <option value="">教導處主任</option>
+                <option value={ALL_STICKY_RECIPIENT_ID}>全體教師與主任</option>
                 {teacherOptions.map((teacher) => (
                   <option key={teacher.id} value={teacher.id}>
                     {teacher.name}

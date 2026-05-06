@@ -7,6 +7,8 @@ import { getDaysLeft } from "@/lib/reminders";
 import { TaskCard } from "./TaskCard";
 import { ActionButton } from "./ActionBar";
 
+const ALL_STICKY_RECIPIENT_ID = "__all__";
+
 type TeacherPortalProps = {
   teacher: Teacher;
   teacherIds?: string[];
@@ -38,20 +40,21 @@ function assignedToAnyTeacherId(task: Task, teacherIds: string[]) {
 }
 
 function noteRecipient(note: StickyNote, teachers: Teacher[]) {
+  if (note.assigneeId === ALL_STICKY_RECIPIENT_ID) return "全體教師與主任";
   if (!note.assigneeId) return "教導處主任";
-  return teachers.find((teacher) => teacher.id === note.assigneeId)?.name ?? "未指定對象";
+  return teachers.find((item) => item.id === note.assigneeId)?.name ?? "未指定對象";
 }
 
 function noteAuthor(note: StickyNote, teachers: Teacher[], currentTeacher: Teacher) {
   if (note.authorId === currentTeacher.id) return currentTeacher.name;
-  return teachers.find((teacher) => teacher.id === note.authorId)?.name ?? "教師";
+  return teachers.find((item) => item.id === note.authorId)?.name ?? "教師";
 }
 
 function noteDueText(note: StickyNote) {
-  if (!note.dueDate) return "沒有設定截止日";
+  if (!note.dueDate) return "沒有設定提醒日";
   const daysLeft = getDaysLeft(note.dueDate);
   if (daysLeft < 0) return `已逾期 ${Math.abs(daysLeft)} 天`;
-  if (daysLeft === 0) return "今天到期";
+  if (daysLeft === 0) return "今天提醒";
   return `剩 ${daysLeft} 天`;
 }
 
@@ -82,9 +85,13 @@ export function TeacherPortal({
     .filter((item, index, allItems) => allItems.findIndex((other) => other.task.id === item.task.id) === index)
     .slice(0, 2);
   const relatedNotes = notes.filter(
-    (note) => !note.done && (identityIds.includes(note.assigneeId ?? "") || identityIds.includes(note.authorId))
+    (note) =>
+      !note.done &&
+      (note.assigneeId === ALL_STICKY_RECIPIENT_ID ||
+        identityIds.includes(note.assigneeId ?? "") ||
+        identityIds.includes(note.authorId))
   );
-  const teacherOptions = teachers.filter((item) => item.enabled !== false && item.id !== teacher.id);
+  const teacherOptions = teachers.filter((item) => item.enabled !== false);
 
   function submitNote() {
     const body = noteBody.trim();
@@ -192,6 +199,7 @@ export function TeacherPortal({
                   aria-label="收件對象"
                 >
                   <option value="">送給教導處主任</option>
+                  <option value={ALL_STICKY_RECIPIENT_ID}>送給全體教師與主任</option>
                   {teacherOptions.map((item) => (
                     <option key={item.id} value={item.id}>
                       送給{item.name}
