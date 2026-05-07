@@ -41,6 +41,7 @@ const TASKS_STORAGE_KEY = "jiao-dao-task-map:tasks:v1";
 const NOTES_STORAGE_KEY = "jiao-dao-task-map:sticky-notes:v1";
 const EVENTS_STORAGE_KEY = "jiao-dao-task-map:events:v1";
 const TEACHERS_STORAGE_KEY = "jiao-dao-task-map:teachers:v1";
+const DELETED_TASKS_STORAGE_KEY = "jiao-dao-task-map:deleted-tasks:v1";
 const ALL_STICKY_RECIPIENT_ID = "__all__";
 
 function readStoredArray<T>(key: string): T[] | null {
@@ -60,6 +61,12 @@ function writeStoredArray<T>(key: string, value: T[]) {
   } catch {
     // Local persistence is a safety net only; cloud sync still runs separately.
   }
+}
+
+function rememberDeletedTask(taskId: string) {
+  const deletedTaskIds = readStoredArray<string>(DELETED_TASKS_STORAGE_KEY) ?? [];
+  if (deletedTaskIds.includes(taskId)) return;
+  writeStoredArray(DELETED_TASKS_STORAGE_KEY, [...deletedTaskIds, taskId]);
 }
 
 function getTodayString() {
@@ -395,7 +402,8 @@ export default function Home() {
       const storedNotes = readStoredArray<StickyNote>(NOTES_STORAGE_KEY);
       const storedEvents = readStoredArray<Event>(EVENTS_STORAGE_KEY);
       const storedTeachers = readStoredArray<Teacher>(TEACHERS_STORAGE_KEY);
-      const localTasks = mergeStoredTasks(storedTasks);
+      const deletedTaskIds = new Set(readStoredArray<string>(DELETED_TASKS_STORAGE_KEY) ?? []);
+      const localTasks = mergeStoredTasks(storedTasks).filter((task) => !deletedTaskIds.has(task.id));
       const localEvents = mergeStoredEvents(storedEvents);
       const localNotes = storedNotes ? storedNotes.filter((note) => !isLegacySeededNote(note)) : stickyNotes;
       const localTeachers = mergeStoredTeachers(storedTeachers);
@@ -412,7 +420,7 @@ export default function Home() {
               ? cloudData.teachers.filter((teacher) => !isLegacySeededTeacher(teacher))
               : initialTeachers;
             const cloudTasks = hasCloudData
-              ? cloudData.tasks.filter((task) => !isLegacySeededTask(task))
+              ? cloudData.tasks.filter((task) => !isLegacySeededTask(task) && !deletedTaskIds.has(task.id))
               : initialTasks;
             const cloudEvents = hasCloudData
               ? cloudData.events.filter((event) => !isLegacySeededEvent(event))
@@ -611,6 +619,7 @@ export default function Home() {
   }
 
   function handleDeleteTask(taskId: string) {
+    rememberDeletedTask(taskId);
     setTasks((current) => {
       const nextTasks = current.filter((task) => task.id !== taskId);
       writeStoredArray(TASKS_STORAGE_KEY, nextTasks);
