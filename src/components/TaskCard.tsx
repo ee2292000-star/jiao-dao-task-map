@@ -287,7 +287,7 @@ export function TaskCard({
           <div className="grid gap-3">
             <input className="rounded-md border border-forest-100 bg-white px-3 py-2 text-base font-bold" value={draft.title} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} placeholder="任務名稱" />
             <textarea className="min-h-24 rounded-md border border-forest-100 bg-white px-3 py-2 text-base font-bold" value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} placeholder="任務說明" />
-            <div className="grid gap-2 md:grid-cols-4">
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-2">
               <select className="rounded-md border border-forest-100 bg-white px-3 py-2 text-base font-bold" value={draft.ownerId} onChange={(event) => setDraft((current) => ({ ...current, ownerId: event.target.value }))}>
                 <option value="">尚未指派</option>
                 {activeTeacherOptions.map((teacher) => (
@@ -317,7 +317,7 @@ export function TaskCard({
       {expanded && (
         <div className="mt-3 rounded-lg border border-forest-100 bg-warm p-3">
           {canConfirmTask && (
-            <div className="mb-3 grid gap-2 md:grid-cols-4">
+            <div className="mb-3 grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-2">
               <select className="rounded-md border border-forest-100 bg-white px-3 py-2 text-base font-bold" value={task.status} onChange={(event) => onStatusChange?.(task.id, event.target.value as Task["status"])}>
                 {statusOptions.map((status) => (
                   <option key={status} value={status}>{getStatusLabel(status)}</option>
