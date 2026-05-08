@@ -125,10 +125,11 @@ export function TeacherPortal({
   const teacherOptions = teachers.filter((item) => item.enabled !== false);
 
   function submitNote() {
-    const body = noteBody.trim();
+    const title = noteTitle.trim();
+    const body = noteBody.trim() || title;
     if (!body) return;
     onCreateNote({
-      title: noteTitle,
+      title,
       body,
       assigneeId: noteAssigneeId,
       dueDate: noteDueDate,

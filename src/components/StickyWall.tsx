@@ -105,10 +105,11 @@ export function StickyWall({
   const archivedNotes = filteredNotes.filter((note) => note.status === "archived");
 
   function submitNote() {
-    const nextBody = body.trim();
+    const nextTitle = title.trim();
+    const nextBody = body.trim() || nextTitle;
     if (!nextBody) return;
     onCreate({
-      title: title.trim() || nextBody.slice(0, 24),
+      title: nextTitle || nextBody.slice(0, 24),
       body: nextBody,
       assigneeId,
       dueDate,
