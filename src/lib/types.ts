@@ -24,7 +24,9 @@ export type TaskStatus = "todo" | "doing" | "done";
 
 export type Priority = "low" | "normal" | "high";
 
-export type StickyColor = "yellow" | "pink" | "green" | "blue";
+export type StickyColor = "yellow" | "pink" | "green" | "blue" | "red";
+
+export type StickyStatus = "normal" | "replied" | "archived";
 
 export type User = {
   id: string;
@@ -100,13 +102,16 @@ export type StickyNote = {
   id: string;
   eventId: string;
   authorId: string;
+  title: string;
   color: StickyColor;
   body: string;
   assigneeId?: string;
   dueDate?: string;
+  status: StickyStatus;
   done: boolean;
   convertedTaskId?: string;
   createdAt: string;
+  updatedAt: string;
 };
 
 export type Reminder = {

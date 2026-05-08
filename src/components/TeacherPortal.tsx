@@ -23,12 +23,32 @@ type TeacherPortalProps = {
   onDeleteComment?: (taskId: string, commentId: string) => void;
   onToggleNote: (noteId: string) => void;
   onCreateNote: (input: {
+    title?: string;
     body: string;
     assigneeId: string;
     dueDate: string;
     color: StickyColor;
     authorId?: string;
   }) => void;
+  onUpdateNote: (noteId: string, changes: Partial<StickyNote>) => void;
+  onDeleteNote: (noteId: string) => void;
+  onSetNoteStatus: (noteId: string, status: StickyNote["status"]) => void;
+};
+
+const colorLabel: Record<StickyColor, string> = {
+  yellow: "提醒",
+  pink: "討論",
+  green: "已處理",
+  blue: "想法",
+  red: "急件"
+};
+
+const colorClass: Record<StickyColor, string> = {
+  yellow: "border-yellow-200 bg-yellow-100",
+  pink: "border-pink-200 bg-pink-100",
+  green: "border-green-200 bg-green-100",
+  blue: "border-blue-200 bg-blue-100",
+  red: "border-red-200 bg-red-100"
 };
 
 function assignedToTeacher(task: Task, teacherId: string) {
@@ -47,7 +67,7 @@ function noteRecipient(note: StickyNote, teachers: Teacher[]) {
 
 function noteAuthor(note: StickyNote, teachers: Teacher[], currentTeacher: Teacher) {
   if (note.authorId === currentTeacher.id) return currentTeacher.name;
-  return teachers.find((item) => item.id === note.authorId)?.name ?? "教師";
+  return teachers.find((item) => item.id === note.authorId)?.name ?? "教導處主任";
 }
 
 function noteDueText(note: StickyNote) {
@@ -56,6 +76,14 @@ function noteDueText(note: StickyNote) {
   if (daysLeft < 0) return `已逾期 ${Math.abs(daysLeft)} 天`;
   if (daysLeft === 0) return "今天提醒";
   return `剩 ${daysLeft} 天`;
+}
+
+function isNoteRelatedToTeacher(note: StickyNote, identityIds: string[]) {
+  return (
+    note.assigneeId === ALL_STICKY_RECIPIENT_ID ||
+    identityIds.includes(note.assigneeId ?? "") ||
+    identityIds.includes(note.authorId)
+  );
 }
 
 export function TeacherPortal({
@@ -70,13 +98,20 @@ export function TeacherPortal({
   onQuickComment,
   onUpdateComment,
   onDeleteComment,
-  onToggleNote,
-  onCreateNote
+  onCreateNote,
+  onUpdateNote,
+  onDeleteNote,
+  onSetNoteStatus
 }: TeacherPortalProps) {
+  const [noteTitle, setNoteTitle] = useState("");
   const [noteBody, setNoteBody] = useState("");
   const [noteAssigneeId, setNoteAssigneeId] = useState("");
   const [noteColor, setNoteColor] = useState<StickyColor>("yellow");
   const [noteDueDate, setNoteDueDate] = useState("");
+  const [editingNoteId, setEditingNoteId] = useState("");
+  const [editTitle, setEditTitle] = useState("");
+  const [editBody, setEditBody] = useState("");
+  const [showArchive, setShowArchive] = useState(false);
 
   const identityIds = teacherIds?.length ? teacherIds : [teacher.id];
   const myTasks = tasks.filter((task) => assignedToAnyTeacherId(task, identityIds));
@@ -84,29 +119,97 @@ export function TeacherPortal({
     .flatMap((teacherId) => getTeacherFocusTasks(tasks, teacherId, 2))
     .filter((item, index, allItems) => allItems.findIndex((other) => other.task.id === item.task.id) === index)
     .slice(0, 2);
-  const relatedNotes = notes.filter(
-    (note) =>
-      !note.done &&
-      (note.assigneeId === ALL_STICKY_RECIPIENT_ID ||
-        identityIds.includes(note.assigneeId ?? "") ||
-        identityIds.includes(note.authorId))
-  );
+  const relatedNotes = notes.filter((note) => isNoteRelatedToTeacher(note, identityIds));
+  const activeNotes = relatedNotes.filter((note) => note.status !== "archived");
+  const archivedNotes = relatedNotes.filter((note) => note.status === "archived");
   const teacherOptions = teachers.filter((item) => item.enabled !== false);
 
   function submitNote() {
     const body = noteBody.trim();
     if (!body) return;
     onCreateNote({
+      title: noteTitle,
       body,
       assigneeId: noteAssigneeId,
       dueDate: noteDueDate,
       color: noteColor,
       authorId: teacher.id
     });
+    setNoteTitle("");
     setNoteBody("");
     setNoteAssigneeId("");
     setNoteColor("yellow");
     setNoteDueDate("");
+  }
+
+  function startEditNote(note: StickyNote) {
+    setEditingNoteId(note.id);
+    setEditTitle(note.title);
+    setEditBody(note.body);
+  }
+
+  function saveEditNote(noteId: string) {
+    if (!editBody.trim()) return;
+    onUpdateNote(noteId, { title: editTitle.trim() || editBody.slice(0, 24), body: editBody.trim() });
+    setEditingNoteId("");
+  }
+
+  function deleteNote(noteId: string) {
+    if (!window.confirm("確定要刪除此便利貼嗎？此動作無法復原。")) return;
+    onDeleteNote(noteId);
+  }
+
+  function renderNote(note: StickyNote) {
+    const isMine = identityIds.includes(note.authorId);
+    return (
+      <article key={note.id} className={`rounded-lg border p-4 ${colorClass[note.color]}`}>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-black text-stone-700">{colorLabel[note.color]}</p>
+            <h4 className="text-2xl font-black text-ink">{note.title}</h4>
+          </div>
+          <div className="flex gap-2">
+            {isMine && (
+              <button className="rounded-md bg-white px-2 py-1 text-sm font-black" onClick={() => startEditNote(note)} type="button">
+                編輯
+              </button>
+            )}
+            <button
+              className="rounded-md bg-white px-2 py-1 text-sm font-black"
+              onClick={() => onSetNoteStatus(note.id, note.status === "archived" ? "normal" : "archived")}
+              type="button"
+            >
+              {note.status === "archived" ? "還原" : "封存"}
+            </button>
+            {isMine && (
+              <button className="rounded-md bg-red-50 px-2 py-1 text-sm font-black text-red-700" onClick={() => deleteNote(note.id)} type="button">
+                刪除
+              </button>
+            )}
+          </div>
+        </div>
+
+        {editingNoteId === note.id ? (
+          <div className="mt-3 grid gap-2">
+            <input className="rounded-md border border-forest-100 bg-white px-3 py-2 font-bold" value={editTitle} onChange={(event) => setEditTitle(event.target.value)} />
+            <textarea className="min-h-24 rounded-md border border-forest-100 bg-white px-3 py-2 font-bold" value={editBody} onChange={(event) => setEditBody(event.target.value)} />
+            <div className="flex gap-2">
+              <ActionButton tone="primary" onClick={() => saveEditNote(note.id)}>儲存</ActionButton>
+              <ActionButton tone="quiet" onClick={() => setEditingNoteId("")}>取消</ActionButton>
+            </div>
+          </div>
+        ) : (
+          <p className="mt-3 text-lg font-bold leading-relaxed text-ink">{note.body}</p>
+        )}
+
+        <div className="mt-3 space-y-1 text-base font-bold text-stone-700">
+          <p>來自：{noteAuthor(note, teachers, teacher)}</p>
+          <p>對象：{noteRecipient(note, teachers)}</p>
+          <p>提醒：{noteDueText(note)}</p>
+          <p>更新：{note.updatedAt}</p>
+        </div>
+      </article>
+    );
   }
 
   return (
@@ -125,7 +228,6 @@ export function TeacherPortal({
 
       <section className="rounded-lg bg-white p-5 shadow-soft">
         <h3 className="text-4xl font-black">本週重點</h3>
-        <p className="mt-1 text-lg font-bold text-stone-600">系統會挑出最需要先看的 1 到 2 件任務。</p>
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
           {focusTasks.length ? (
             focusTasks.map(({ task, score, reasons }) => (
@@ -145,36 +247,21 @@ export function TeacherPortal({
               />
             ))
           ) : (
-            <p className="rounded-lg bg-rice p-5 text-2xl font-black text-forest-800">
-              目前沒有需要優先處理的任務
-            </p>
+            <p className="rounded-lg bg-rice p-5 text-2xl font-black text-forest-800">目前沒有需要優先處理的任務</p>
           )}
         </div>
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-[1.35fr_0.95fr]">
+      <section className="grid gap-5 xl:grid-cols-[1.2fr_1fr]">
         <div className="rounded-lg bg-white p-5 shadow-soft">
           <h3 className="text-4xl font-black">我的任務列表</h3>
           <div className="mt-4 grid gap-4 lg:grid-cols-2">
             {myTasks.length ? (
               myTasks.map((task) => (
-                <TaskCard
-                  key={task.id}
-                  task={task}
-                  teachers={teachers}
-                  compact
-                  currentUserId={currentUserId}
-                  editableCommentAuthorIds={editableCommentAuthorIds}
-                  onStatusChange={onStatusChange}
-                  onQuickComment={onQuickComment}
-                  onUpdateComment={onUpdateComment}
-                  onDeleteComment={onDeleteComment}
-                />
+                <TaskCard key={task.id} task={task} teachers={teachers} compact currentUserId={currentUserId} editableCommentAuthorIds={editableCommentAuthorIds} onStatusChange={onStatusChange} onQuickComment={onQuickComment} onUpdateComment={onUpdateComment} onDeleteComment={onDeleteComment} />
               ))
             ) : (
-              <p className="rounded-lg bg-rice p-5 text-xl font-black text-forest-800 lg:col-span-2">
-                目前沒有指派給你的任務。
-              </p>
+              <p className="rounded-lg bg-rice p-5 text-xl font-black text-forest-800 lg:col-span-2">目前沒有指派給你的任務。</p>
             )}
           </div>
         </div>
@@ -184,79 +271,42 @@ export function TeacherPortal({
             <p className="text-xl font-bold text-forest-700">給主任或同事的協作訊息</p>
             <h3 className="text-4xl font-black">新增便利貼</h3>
             <div className="mt-4 grid gap-3">
-              <textarea
-                className="min-h-28 rounded-md border border-forest-100 bg-warm px-4 py-3 text-lg font-bold"
-                value={noteBody}
-                onChange={(event) => setNoteBody(event.target.value)}
-                placeholder="例如：午餐宣導海報已完成，想請主任確認。"
-                aria-label="便利貼內容"
-              />
+              <input className="rounded-md border border-forest-100 bg-warm px-4 py-3 text-lg font-bold" value={noteTitle} onChange={(event) => setNoteTitle(event.target.value)} placeholder="便利貼標題" />
+              <textarea className="min-h-28 rounded-md border border-forest-100 bg-warm px-4 py-3 text-lg font-bold" value={noteBody} onChange={(event) => setNoteBody(event.target.value)} placeholder="例如：午餐宣導海報已完成，想請主任確認。" />
               <div className="grid gap-2 md:grid-cols-2">
-                <select
-                  className="rounded-md border border-forest-100 bg-warm px-3 py-2 text-base font-black"
-                  value={noteAssigneeId}
-                  onChange={(event) => setNoteAssigneeId(event.target.value)}
-                  aria-label="收件對象"
-                >
+                <select className="rounded-md border border-forest-100 bg-warm px-3 py-2 text-base font-black" value={noteAssigneeId} onChange={(event) => setNoteAssigneeId(event.target.value)}>
                   <option value="">送給教導處主任</option>
                   <option value={ALL_STICKY_RECIPIENT_ID}>送給全體教師與主任</option>
                   {teacherOptions.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      送給{item.name}
-                    </option>
+                    <option key={item.id} value={item.id}>送給{item.name}</option>
                   ))}
                 </select>
-                <input
-                  className="rounded-md border border-forest-100 bg-warm px-3 py-2 text-base font-black"
-                  type="date"
-                  value={noteDueDate}
-                  onChange={(event) => setNoteDueDate(event.target.value)}
-                  aria-label="提醒日期"
-                />
+                <input className="rounded-md border border-forest-100 bg-warm px-3 py-2 text-base font-black" type="date" value={noteDueDate} onChange={(event) => setNoteDueDate(event.target.value)} />
               </div>
-              <select
-                className="rounded-md border border-forest-100 bg-warm px-3 py-2 text-base font-black"
-                value={noteColor}
-                onChange={(event) => setNoteColor(event.target.value as StickyColor)}
-                aria-label="便利貼分類"
-              >
-                <option value="yellow">黃：提醒</option>
-                <option value="pink">粉：討論</option>
-                <option value="green">綠：已決定</option>
-                <option value="blue">藍：想法</option>
+              <select className="rounded-md border border-forest-100 bg-warm px-3 py-2 text-base font-black" value={noteColor} onChange={(event) => setNoteColor(event.target.value as StickyColor)}>
+                <option value="yellow">黃色提醒</option>
+                <option value="blue">藍色想法</option>
+                <option value="green">綠色已處理</option>
+                <option value="red">紅色急件</option>
+                <option value="pink">粉色討論</option>
               </select>
-              <ActionButton tone="primary" onClick={submitNote}>
-                送出便利貼
-              </ActionButton>
+              <ActionButton tone="primary" onClick={submitNote}>送出便利貼</ActionButton>
             </div>
           </div>
 
           <div className="rounded-lg bg-white p-5 shadow-soft">
-            <h3 className="text-4xl font-black">我的便利貼</h3>
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-4xl font-black">我的便利貼</h3>
+              <button className="rounded-md bg-rice px-3 py-2 text-base font-black" type="button" onClick={() => setShowArchive((value) => !value)}>
+                {showArchive ? "回主要畫面" : `封存區 ${archivedNotes.length}`}
+              </button>
+            </div>
             <div className="mt-4 space-y-3">
-              {relatedNotes.length ? (
-                relatedNotes.map((note) => {
-                  const isSentByMe = identityIds.includes(note.authorId);
-                  return (
-                    <div key={note.id} className="rounded-lg border border-forest-100 bg-rice p-4">
-                      <p className="text-xl font-black">{note.body}</p>
-                      <p className="mt-2 text-base font-bold text-stone-700">
-                        {isSentByMe ? `送給：${noteRecipient(note, teachers)}` : `來自：${noteAuthor(note, teachers, teacher)}`}
-                      </p>
-                      <p className="mt-1 text-base font-bold text-stone-700">{noteDueText(note)}</p>
-                      {!isSentByMe && (
-                        <div className="mt-3">
-                          <ActionButton tone="primary" onClick={() => onToggleNote(note.id)}>
-                            標記完成
-                          </ActionButton>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
+              {(showArchive ? archivedNotes : activeNotes).length ? (
+                (showArchive ? archivedNotes : activeNotes).map(renderNote)
               ) : (
                 <p className="rounded-lg bg-forest-50 p-5 text-xl font-black text-forest-800">
-                  目前沒有與你有關的便利貼。
+                  {showArchive ? "封存區目前沒有便利貼。" : "目前沒有與你有關的便利貼。"}
                 </p>
               )}
             </div>

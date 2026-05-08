@@ -14,6 +14,45 @@ function getTodayString() {
   return new Date().toLocaleDateString("sv-SE");
 }
 
+type StickyBodyPayload = {
+  kind: "sticky-wall";
+  title: string;
+  body: string;
+  status: StickyNote["status"];
+};
+
+function parseStickyBody(rawBody: string): StickyBodyPayload {
+  try {
+    const parsed = JSON.parse(rawBody) as Partial<StickyBodyPayload>;
+    if (parsed.kind === "sticky-wall") {
+      return {
+        kind: "sticky-wall",
+        title: parsed.title || "未命名便利貼",
+        body: parsed.body || "",
+        status: parsed.status === "replied" || parsed.status === "archived" ? parsed.status : "normal"
+      };
+    }
+  } catch {
+    // Existing notes are plain text. Keep them readable.
+  }
+
+  return {
+    kind: "sticky-wall",
+    title: rawBody.slice(0, 24) || "未命名便利貼",
+    body: rawBody,
+    status: "normal"
+  };
+}
+
+function serializeStickyBody(note: StickyNote) {
+  return JSON.stringify({
+    kind: "sticky-wall",
+    title: note.title || note.body.slice(0, 24) || "未命名便利貼",
+    body: note.body,
+    status: note.status ?? (note.done ? "archived" : "normal")
+  } satisfies StickyBodyPayload);
+}
+
 type TaskRow = {
   id: string;
   title: string;
@@ -155,17 +194,21 @@ function toEventRow(event: Event): EventRow {
 }
 
 function fromStickyNoteRow(row: StickyNoteRow): StickyNote {
+  const parsedBody = parseStickyBody(row.body ?? "");
   return {
     id: row.id,
     eventId: row.event_id ?? "",
     authorId: row.author_id ?? "",
+    title: parsedBody.title,
     color: row.color,
-    body: row.body,
+    body: parsedBody.body,
     assigneeId: row.assignee_id ?? undefined,
     dueDate: row.due_date ?? undefined,
-    done: row.done,
+    status: row.done ? "archived" : parsedBody.status,
+    done: row.done || parsedBody.status === "archived",
     convertedTaskId: row.converted_task_id ?? undefined,
-    createdAt: row.created_at?.slice(0, 10) ?? getTodayString()
+    createdAt: row.created_at?.slice(0, 10) ?? getTodayString(),
+    updatedAt: row.updated_at?.slice(0, 10) ?? row.created_at?.slice(0, 10) ?? getTodayString()
   };
 }
 
@@ -175,13 +218,13 @@ function toStickyNoteRow(note: StickyNote): StickyNoteRow {
     event_id: note.eventId || null,
     author_id: note.authorId || null,
     color: note.color,
-    body: note.body,
+    body: serializeStickyBody(note),
     assignee_id: note.assigneeId ?? null,
     due_date: note.dueDate ?? null,
-    done: note.done,
+    done: note.status === "archived" || note.done,
     converted_task_id: note.convertedTaskId ?? null,
     created_at: note.createdAt,
-    updated_at: getTodayString()
+    updated_at: note.updatedAt ?? getTodayString()
   };
 }
 
@@ -260,5 +303,12 @@ export async function deleteCloudTeacher(teacherId: string) {
   if (!supabase) return;
 
   const { error } = await supabase.from("teachers").delete().eq("id", teacherId);
+  if (error) throw error;
+}
+
+export async function deleteCloudStickyNote(noteId: string) {
+  if (!supabase) return;
+
+  const { error } = await supabase.from("sticky_notes").delete().eq("id", noteId);
   if (error) throw error;
 }

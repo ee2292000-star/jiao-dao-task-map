@@ -19,7 +19,14 @@ import { events as initialEvents, initialTasks, stickyNotes, teachers as initial
 import { balanceTaskAssignments } from "@/lib/decisionSupport";
 import { getDaysLeft } from "@/lib/reminders";
 import { generateEventTemplateTasks, savedEventTemplates } from "@/lib/templates";
-import { deleteCloudTask, deleteCloudTeacher, isSupabaseConfigured, loadCloudData, saveCloudData } from "@/lib/supabaseClient";
+import {
+  deleteCloudStickyNote,
+  deleteCloudTask,
+  deleteCloudTeacher,
+  isSupabaseConfigured,
+  loadCloudData,
+  saveCloudData
+} from "@/lib/supabaseClient";
 import type { Event, StickyNote, Task, Teacher, TeacherAccount } from "@/lib/types";
 import type { Priority, StickyColor } from "@/lib/types";
 
@@ -42,6 +49,7 @@ const NOTES_STORAGE_KEY = "jiao-dao-task-map:sticky-notes:v1";
 const EVENTS_STORAGE_KEY = "jiao-dao-task-map:events:v1";
 const TEACHERS_STORAGE_KEY = "jiao-dao-task-map:teachers:v1";
 const DELETED_TASKS_STORAGE_KEY = "jiao-dao-task-map:deleted-tasks:v1";
+const DELETED_NOTES_STORAGE_KEY = "jiao-dao-task-map:deleted-notes:v1";
 const ALL_STICKY_RECIPIENT_ID = "__all__";
 
 function readStoredArray<T>(key: string): T[] | null {
@@ -67,6 +75,12 @@ function rememberDeletedTask(taskId: string) {
   const deletedTaskIds = readStoredArray<string>(DELETED_TASKS_STORAGE_KEY) ?? [];
   if (deletedTaskIds.includes(taskId)) return;
   writeStoredArray(DELETED_TASKS_STORAGE_KEY, [...deletedTaskIds, taskId]);
+}
+
+function rememberDeletedNote(noteId: string) {
+  const deletedNoteIds = readStoredArray<string>(DELETED_NOTES_STORAGE_KEY) ?? [];
+  if (deletedNoteIds.includes(noteId)) return;
+  writeStoredArray(DELETED_NOTES_STORAGE_KEY, [...deletedNoteIds, noteId]);
 }
 
 function getTodayString() {
@@ -175,6 +189,25 @@ function normalizeEvent(event: Partial<Event>): Event {
     taskIds: event.taskIds ?? [],
     templateId: event.templateId,
     reviewNotes: event.reviewNotes ?? []
+  };
+}
+
+function normalizeStickyNote(note: Partial<StickyNote>): StickyNote {
+  const body = note.body ?? "";
+  return {
+    id: note.id ?? `note-${Date.now()}`,
+    eventId: note.eventId ?? "",
+    authorId: note.authorId ?? "",
+    title: note.title ?? body.slice(0, 24) ?? "未命名便利貼",
+    color: note.color ?? "yellow",
+    body,
+    assigneeId: note.assigneeId,
+    dueDate: note.dueDate,
+    status: note.status ?? (note.done ? "archived" : "normal"),
+    done: note.done ?? note.status === "archived",
+    convertedTaskId: note.convertedTaskId,
+    createdAt: note.createdAt ?? getTodayString(),
+    updatedAt: note.updatedAt ?? note.createdAt ?? getTodayString()
   };
 }
 
@@ -403,9 +436,14 @@ export default function Home() {
       const storedEvents = readStoredArray<Event>(EVENTS_STORAGE_KEY);
       const storedTeachers = readStoredArray<Teacher>(TEACHERS_STORAGE_KEY);
       const deletedTaskIds = new Set(readStoredArray<string>(DELETED_TASKS_STORAGE_KEY) ?? []);
+      const deletedNoteIds = new Set(readStoredArray<string>(DELETED_NOTES_STORAGE_KEY) ?? []);
       const localTasks = mergeStoredTasks(storedTasks).filter((task) => !deletedTaskIds.has(task.id));
       const localEvents = mergeStoredEvents(storedEvents);
-      const localNotes = storedNotes ? storedNotes.filter((note) => !isLegacySeededNote(note)) : stickyNotes;
+      const localNotes = storedNotes
+        ? storedNotes
+            .filter((note) => !isLegacySeededNote(note) && !deletedNoteIds.has(note.id))
+            .map(normalizeStickyNote)
+        : stickyNotes.map(normalizeStickyNote);
       const localTeachers = mergeStoredTeachers(storedTeachers);
       const hasLocalData = Boolean(storedTasks || storedNotes || storedEvents || storedTeachers);
 
@@ -426,8 +464,10 @@ export default function Home() {
               ? cloudData.events.filter((event) => !isLegacySeededEvent(event))
               : initialEvents;
             const cloudNotes = hasCloudData
-              ? cloudData.notes.filter((note) => !isLegacySeededNote(note))
-              : stickyNotes;
+              ? cloudData.notes
+                  .filter((note) => !isLegacySeededNote(note) && !deletedNoteIds.has(note.id))
+                  .map(normalizeStickyNote)
+              : stickyNotes.map(normalizeStickyNote);
             const mergedTeachers = hasLocalData ? mergeUniqueById(localTeachers, cloudTeachers) : cloudTeachers;
             const mergedTasks = hasLocalData ? mergeUniqueById(localTasks, cloudTasks) : cloudTasks;
             const { teachers: nextTeachers, tasks: nextTasks } = compactRosterData(mergedTeachers, mergedTasks);
@@ -864,7 +904,16 @@ export default function Home() {
 
   function handleStickyToggle(noteId: string) {
     setNotes((current) => {
-      const nextNotes = current.map((note) => (note.id === noteId ? { ...note, done: !note.done } : note));
+      const nextNotes = current.map((note) =>
+        note.id === noteId
+          ? {
+              ...note,
+              status: note.status === "archived" ? ("normal" as const) : ("archived" as const),
+              done: note.status !== "archived",
+              updatedAt: getTodayString()
+            }
+          : note
+      );
       writeStoredArray(NOTES_STORAGE_KEY, nextNotes);
       if (dataSource === "cloud") {
         void saveCloudData({ teachers, events, tasks, notes: nextNotes }).catch(() => {
@@ -879,7 +928,7 @@ export default function Home() {
   function handleStickyAssign(noteId: string, teacherId: string) {
     setNotes((current) => {
       const nextNotes = current.map((note) =>
-        note.id === noteId ? { ...note, assigneeId: teacherId || undefined } : note
+        note.id === noteId ? { ...note, assigneeId: teacherId || undefined, updatedAt: getTodayString() } : note
       );
       writeStoredArray(NOTES_STORAGE_KEY, nextNotes);
       if (dataSource === "cloud") {
@@ -890,6 +939,50 @@ export default function Home() {
       return nextNotes;
     });
     setActionMessage("便利貼已更新指派對象。");
+  }
+
+  function handleUpdateSticky(noteId: string, changes: Partial<StickyNote>) {
+    setNotes((current) => {
+      const nextNotes = current.map((note) =>
+        note.id === noteId
+          ? {
+              ...note,
+              ...changes,
+              title: changes.title?.trim() || note.title,
+              body: changes.body ?? note.body,
+              done: changes.status === "archived" ? true : changes.status ? false : note.done,
+              updatedAt: getTodayString()
+            }
+          : note
+      );
+      writeStoredArray(NOTES_STORAGE_KEY, nextNotes);
+      if (dataSource === "cloud") {
+        void saveCloudData({ teachers, events, tasks, notes: nextNotes }).catch(() => {
+          setActionMessage("雲端同步暫時失敗，已保留本機資料。");
+        });
+      }
+      return nextNotes;
+    });
+    setActionMessage("便利貼已更新。");
+  }
+
+  function handleDeleteSticky(noteId: string) {
+    rememberDeletedNote(noteId);
+    setNotes((current) => {
+      const nextNotes = current.filter((note) => note.id !== noteId);
+      writeStoredArray(NOTES_STORAGE_KEY, nextNotes);
+      if (dataSource === "cloud") {
+        void deleteCloudStickyNote(noteId).catch(() => {
+          setActionMessage("雲端刪除暫時失敗，已先更新本機資料。");
+        });
+      }
+      return nextNotes;
+    });
+    setActionMessage("便利貼已刪除。");
+  }
+
+  function handleSetStickyStatus(noteId: string, status: StickyNote["status"]) {
+    handleUpdateSticky(noteId, { status, done: status === "archived" });
   }
 
   function handleConvertSticky(noteId: string) {
@@ -903,10 +996,10 @@ export default function Home() {
         : note.assigneeId
           ? [note.assigneeId]
           : [];
-    const newTask: Task = {
-      id: taskId,
-      title: `便利貼任務：${note.body}`,
-      description: "由共筆便利貼轉為正式任務，可再補充說明與留言。",
+      const newTask: Task = {
+        id: taskId,
+        title: `便利貼任務：${note.title || note.body}`,
+        description: "由共筆便利貼轉為正式任務，可再補充說明與留言。",
       assignees: noteOwnerIds,
       ownerIds: noteOwnerIds,
       assignedTo: noteOwnerIds[0],
@@ -924,7 +1017,9 @@ export default function Home() {
 
     setTasks((current) => [newTask, ...current]);
     setNotes((current) =>
-      current.map((item) => (item.id === noteId ? { ...item, convertedTaskId: taskId } : item))
+      current.map((item) =>
+        item.id === noteId ? { ...item, convertedTaskId: taskId, status: "replied", updatedAt: getTodayString() } : item
+      )
     );
     setSelectedTaskId(taskId);
     setActionMessage("便利貼已轉為正式任務。");
@@ -977,6 +1072,7 @@ export default function Home() {
   }
 
   function handleCreateNote(input: {
+    title?: string;
     body: string;
     assigneeId: string;
     dueDate: string;
@@ -987,12 +1083,15 @@ export default function Home() {
       id: `note-${Date.now()}`,
       eventId: "",
       authorId: input.authorId ?? activeTeacher?.id ?? currentUser?.id ?? "",
+      title: input.title?.trim() || input.body.slice(0, 24) || "未命名便利貼",
       color: input.color,
       body: input.body,
       assigneeId: input.assigneeId || undefined,
       dueDate: input.dueDate || undefined,
+      status: "normal",
       done: false,
-      createdAt: getTodayString()
+      createdAt: getTodayString(),
+      updatedAt: getTodayString()
     };
 
     setNotes((current) => {
@@ -1301,6 +1400,9 @@ export default function Home() {
                   onDeleteComment={handleDeleteComment}
                   onToggleNote={handleStickyToggle}
                   onCreateNote={handleCreateNote}
+                  onUpdateNote={handleUpdateSticky}
+                  onDeleteNote={handleDeleteSticky}
+                  onSetNoteStatus={handleSetStickyStatus}
                 />
               ) : (
                 <section className="rounded-lg bg-white p-5 shadow-soft">
@@ -1374,9 +1476,15 @@ export default function Home() {
                 <StickyWall
                   notes={notes}
                   teachers={visibleTeachers}
+                  currentUserId={currentUser.id}
+                  canManageAll={currentUser.role === "admin"}
                   onToggle={handleStickyToggle}
                   onConvert={handleConvertSticky}
                   onAssign={handleStickyAssign}
+                  onCreate={handleCreateNote}
+                  onUpdate={handleUpdateSticky}
+                  onDelete={handleDeleteSticky}
+                  onSetStatus={handleSetStickyStatus}
                 />
                 <TemplatePanel />
                 {activeTeacher && (
