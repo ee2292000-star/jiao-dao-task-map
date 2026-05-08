@@ -20,7 +20,7 @@ export type TeacherAccount = {
   updatedAt?: string;
 };
 
-export type TaskStatus = "todo" | "doing" | "done";
+export type TaskStatus = "todo" | "doing" | "waiting" | "review" | "done" | "archived";
 
 export type Priority = "low" | "normal" | "high";
 

@@ -17,7 +17,7 @@ import { Timeline } from "@/components/Timeline";
 import { WorkloadPanel } from "@/components/WorkloadPanel";
 import { events as initialEvents, initialTasks, stickyNotes, teachers as initialTeachers } from "@/lib/initialData";
 import { balanceTaskAssignments } from "@/lib/decisionSupport";
-import { getDaysLeft } from "@/lib/reminders";
+import { getDaysLeft, isTaskClosed } from "@/lib/reminders";
 import { generateEventTemplateTasks, savedEventTemplates } from "@/lib/templates";
 import {
   deleteCloudStickyNote,
@@ -290,20 +290,22 @@ function filterTasks(tasks: Task[], filter: string) {
   if (filter === "week") {
     return tasks.filter((task) => {
       const days = getDaysLeft(task.dueDate);
-      return days >= 0 && days <= 7 && task.status !== "done";
+      return days >= 0 && days <= 7 && !isTaskClosed(task);
     });
   }
   if (filter === "done") return tasks.filter((task) => task.status === "done");
   if (filter === "doing") return tasks.filter((task) => task.status === "doing");
+  if (filter === "review") return tasks.filter((task) => task.status === "review");
+  if (filter === "archived") return tasks.filter((task) => task.status === "archived");
   if (filter === "overdue") {
-    return tasks.filter((task) => getDaysLeft(task.dueDate) < 0 && task.status !== "done");
+    return tasks.filter((task) => getDaysLeft(task.dueDate) < 0 && !isTaskClosed(task));
   }
-  if (filter === "unassigned") return tasks.filter((task) => task.ownerIds.length === 0);
+  if (filter === "unassigned") return tasks.filter((task) => task.ownerIds.length === 0 && !isTaskClosed(task));
   if (filter === "comments") {
-    return tasks.filter((task) => task.comments.length > 0 && task.status !== "done");
+    return tasks.filter((task) => task.comments.length > 0 && !isTaskClosed(task));
   }
   if (filter === "confirm") {
-    return tasks.filter((task) => task.status === "todo" && task.priority === "high");
+    return tasks.filter((task) => task.status === "review");
   }
   if (filter.startsWith("teacher:")) {
     const teacherId = filter.replace("teacher:", "");
@@ -325,6 +327,8 @@ function getFilterLabel(filter: string) {
   if (filter === "week") return "本週到期";
   if (filter === "done") return "已完成";
   if (filter === "doing") return "進行中";
+  if (filter === "review") return "待主任確認";
+  if (filter === "archived") return "已封存";
   if (filter === "overdue") return "逾期任務";
   if (filter === "unassigned") return "尚未指派";
   if (filter === "comments") return "有留言";
@@ -985,42 +989,63 @@ export default function Home() {
     handleUpdateSticky(noteId, { status, done: status === "archived" });
   }
 
-  function handleConvertSticky(noteId: string) {
+  function handleConvertSticky(
+    noteId: string,
+    options: {
+      assigneeId: string;
+      dueDate: string;
+      taskType: string;
+      priority: Priority;
+    }
+  ) {
     const note = notes.find((item) => item.id === noteId);
     if (!note || note.convertedTaskId) return;
 
     const taskId = `task-from-${note.id}`;
     const noteOwnerIds =
-      note.assigneeId === ALL_STICKY_RECIPIENT_ID
+      options.assigneeId
+        ? [options.assigneeId]
+        : note.assigneeId === ALL_STICKY_RECIPIENT_ID
         ? visibleTeachers.filter((teacher) => teacher.enabled !== false).map((teacher) => teacher.id)
         : note.assigneeId
           ? [note.assigneeId]
           : [];
       const newTask: Task = {
         id: taskId,
-        title: `便利貼任務：${note.title || note.body}`,
-        description: "由共筆便利貼轉為正式任務，可再補充說明與留言。",
+        title: note.title || note.body.slice(0, 24),
+        description: `由便利貼轉為正式任務。\n類型：${options.taskType}\n\n${note.body}`,
       assignees: noteOwnerIds,
       ownerIds: noteOwnerIds,
       assignedTo: noteOwnerIds[0],
       eventId: note.eventId,
       status: "todo",
-      priority: "normal",
+      priority: options.priority,
       isCritical: false,
       isBlocked: false,
-      dueDate: note.dueDate ?? addDaysString(6),
+      dueDate: options.dueDate || note.dueDate || addDaysString(6),
       createdAt: getTodayString(),
       updatedAt: getTodayString(),
       comments: [],
       attachments: []
     };
 
-    setTasks((current) => [newTask, ...current]);
-    setNotes((current) =>
-      current.map((item) =>
-        item.id === noteId ? { ...item, convertedTaskId: taskId, status: "replied", updatedAt: getTodayString() } : item
-      )
-    );
+    setTasks((current) => {
+      const nextTasks = [newTask, ...current];
+      writeStoredArray(TASKS_STORAGE_KEY, nextTasks);
+      return nextTasks;
+    });
+    setNotes((current) => {
+      const nextNotes = current.map((item) =>
+        item.id === noteId ? { ...item, convertedTaskId: taskId, status: "replied" as const, done: false, updatedAt: getTodayString() } : item
+      );
+      writeStoredArray(NOTES_STORAGE_KEY, nextNotes);
+      if (dataSource === "cloud") {
+        void saveCloudData({ teachers, events, tasks: [newTask, ...tasks], notes: nextNotes }).catch(() => {
+          setActionMessage("雲端同步暫時失敗，已保留本機資料。");
+        });
+      }
+      return nextNotes;
+    });
     setSelectedTaskId(taskId);
     setActionMessage("便利貼已轉為正式任務。");
   }
@@ -1423,18 +1448,15 @@ export default function Home() {
                   filter={filter}
                   actionMessage={actionMessage}
                   currentUserId={currentUser.id}
-                  editableCommentAuthorIds={[currentUser.id]}
-                  canManageComments={currentUser.role === "admin"}
                   onFilterChange={setFilter}
                   onStatusChange={handleStatusChange}
                   onPriorityChange={handlePriorityChange}
                   onAssign={handleAssign}
                   onOpenTask={setSelectedTaskId}
                   onRemind={handleRemind}
-                  onUpdateComment={handleUpdateComment}
-                  onDeleteComment={handleDeleteComment}
                   onBalanceTasks={handleBalanceTasks}
                   onDeferTask={handleDeferTask}
+                  onCreateNote={handleCreateNote}
                 />
 
                 <QuickCreatePanel
@@ -1460,6 +1482,7 @@ export default function Home() {
                   currentUserId={currentUser.id}
                   editableCommentAuthorIds={[currentUser.id]}
                   canManageComments={currentUser.role === "admin"}
+                  canConfirmTask={currentUser.role === "admin"}
                   onStatusChange={handleStatusChange}
                   onPriorityChange={handlePriorityChange}
                   onAssign={handleAssign}
@@ -1485,6 +1508,7 @@ export default function Home() {
                   onUpdate={handleUpdateSticky}
                   onDelete={handleDeleteSticky}
                   onSetStatus={handleSetStickyStatus}
+                  onOpenTask={setSelectedTaskId}
                 />
                 <TemplatePanel />
                 {activeTeacher && (

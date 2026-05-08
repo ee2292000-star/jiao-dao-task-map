@@ -1,11 +1,18 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { StickyColor, StickyNote, Teacher } from "@/lib/types";
+import type { Priority, StickyColor, StickyNote, Teacher } from "@/lib/types";
 import { getDaysLeft } from "@/lib/reminders";
 import { ActionBar, ActionButton } from "./ActionBar";
 
 const ALL_STICKY_RECIPIENT_ID = "__all__";
+
+type ConvertOptions = {
+  assigneeId: string;
+  dueDate: string;
+  taskType: string;
+  priority: Priority;
+};
 
 type StickyWallProps = {
   notes: StickyNote[];
@@ -13,7 +20,7 @@ type StickyWallProps = {
   currentUserId: string;
   canManageAll: boolean;
   onToggle: (noteId: string) => void;
-  onConvert: (noteId: string) => void;
+  onConvert: (noteId: string, options: ConvertOptions) => void;
   onAssign: (noteId: string, teacherId: string) => void;
   onCreate: (input: {
     title?: string;
@@ -26,6 +33,7 @@ type StickyWallProps = {
   onUpdate: (noteId: string, changes: Partial<StickyNote>) => void;
   onDelete: (noteId: string) => void;
   onSetStatus: (noteId: string, status: StickyNote["status"]) => void;
+  onOpenTask?: (taskId: string) => void;
 };
 
 const colorClass: Record<StickyColor, string> = {
@@ -37,24 +45,24 @@ const colorClass: Record<StickyColor, string> = {
 };
 
 const colorLabel: Record<StickyColor, string> = {
-  yellow: "黃色提醒",
-  blue: "藍色想法",
-  green: "綠色已處理",
-  red: "紅色急件",
-  pink: "粉色討論"
+  yellow: "提醒",
+  blue: "想法",
+  pink: "問題",
+  green: "回報",
+  red: "急件"
 };
 
 function teacherName(id: string | undefined, teachers: Teacher[]) {
-  if (id === ALL_STICKY_RECIPIENT_ID) return "全體教師與主任";
-  if (!id) return "教導處主任";
-  return teachers.find((teacher) => teacher.id === id)?.name ?? "教導處主任";
+  if (id === ALL_STICKY_RECIPIENT_ID) return "全體教師";
+  if (!id) return "主任";
+  return teachers.find((teacher) => teacher.id === id)?.name ?? "尚未設定";
 }
 
 function dueText(note: StickyNote) {
-  if (!note.dueDate) return "沒有設定提醒日";
+  if (!note.dueDate) return "未設定期限";
   const daysLeft = getDaysLeft(note.dueDate);
   if (daysLeft < 0) return `已逾期 ${Math.abs(daysLeft)} 天`;
-  if (daysLeft === 0) return "今天提醒";
+  if (daysLeft === 0) return "今天到期";
   return `剩 ${daysLeft} 天`;
 }
 
@@ -62,6 +70,12 @@ function statusLabel(status: StickyNote["status"]) {
   if (status === "archived") return "已封存";
   if (status === "replied") return "已回覆";
   return "一般";
+}
+
+function addDaysString(days: number) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toLocaleDateString("sv-SE");
 }
 
 export function StickyWall({
@@ -74,7 +88,8 @@ export function StickyWall({
   onCreate,
   onUpdate,
   onDelete,
-  onSetStatus
+  onSetStatus,
+  onOpenTask
 }: StickyWallProps) {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -84,9 +99,17 @@ export function StickyWall({
   const [statusFilter, setStatusFilter] = useState<"all" | StickyNote["status"]>("all");
   const [authorFilter, setAuthorFilter] = useState("all");
   const [targetFilter, setTargetFilter] = useState("all");
+  const [colorFilter, setColorFilter] = useState<"all" | StickyColor>("all");
   const [editingNoteId, setEditingNoteId] = useState("");
   const [editTitle, setEditTitle] = useState("");
   const [editBody, setEditBody] = useState("");
+  const [convertingNoteId, setConvertingNoteId] = useState("");
+  const [convertDraft, setConvertDraft] = useState<ConvertOptions>({
+    assigneeId: "",
+    dueDate: addDaysString(7),
+    taskType: "行政協作",
+    priority: "normal"
+  });
   const teacherOptions = teachers.filter((teacher) => teacher.enabled !== false);
 
   const filteredNotes = useMemo(
@@ -95,9 +118,10 @@ export function StickyWall({
         .filter((note) => (statusFilter === "all" ? true : note.status === statusFilter))
         .filter((note) => (authorFilter === "all" ? true : note.authorId === authorFilter))
         .filter((note) => (targetFilter === "all" ? true : (note.assigneeId || "") === targetFilter))
+        .filter((note) => (colorFilter === "all" ? true : note.color === colorFilter))
         .slice()
         .sort((a, b) => (b.updatedAt || b.createdAt).localeCompare(a.updatedAt || a.createdAt)),
-    [authorFilter, notes, statusFilter, targetFilter]
+    [authorFilter, colorFilter, notes, statusFilter, targetFilter]
   );
 
   const directorAnnouncements = filteredNotes.filter((note) => note.authorId === currentUserId && note.status !== "archived");
@@ -130,14 +154,30 @@ export function StickyWall({
   }
 
   function saveEdit(noteId: string) {
-    if (!editBody.trim()) return;
-    onUpdate(noteId, { title: editTitle.trim() || editBody.slice(0, 24), body: editBody.trim() });
+    const nextBody = editBody.trim();
+    if (!nextBody) return;
+    onUpdate(noteId, { title: editTitle.trim() || nextBody.slice(0, 24), body: nextBody });
     setEditingNoteId("");
   }
 
   function confirmDelete(noteId: string) {
     if (!window.confirm("確定要刪除此便利貼嗎？此動作無法復原。")) return;
     onDelete(noteId);
+  }
+
+  function startConvert(note: StickyNote) {
+    setConvertingNoteId(note.id);
+    setConvertDraft({
+      assigneeId: note.assigneeId && note.assigneeId !== ALL_STICKY_RECIPIENT_ID ? note.assigneeId : "",
+      dueDate: note.dueDate || addDaysString(7),
+      taskType: "行政協作",
+      priority: note.color === "red" ? "high" : "normal"
+    });
+  }
+
+  function submitConvert(noteId: string) {
+    onConvert(noteId, convertDraft);
+    setConvertingNoteId("");
   }
 
   function renderNote(note: StickyNote) {
@@ -150,18 +190,27 @@ export function StickyWall({
             <h3 className="text-2xl font-black text-ink">{note.title}</h3>
           </div>
           <div className="flex flex-wrap justify-end gap-2">
-            {canManage && (
-              <button className="rounded-md bg-white px-2 py-1 text-sm font-black" onClick={() => startEdit(note)} type="button">編輯</button>
+            {note.convertedTaskId && (
+              <span className="rounded-md bg-white px-2 py-1 text-sm font-black text-forest-800">已轉任務</span>
             )}
-            <button
-              className="rounded-md bg-white px-2 py-1 text-sm font-black"
-              onClick={() => onSetStatus(note.id, note.status === "archived" ? "normal" : "archived")}
-              type="button"
-            >
-              {note.status === "archived" ? "還原" : "封存"}
-            </button>
             {canManage && (
-              <button className="rounded-md bg-red-50 px-2 py-1 text-sm font-black text-red-700" onClick={() => confirmDelete(note.id)} type="button">刪除</button>
+              <button className="rounded-md bg-white px-2 py-1 text-sm font-black" onClick={() => startEdit(note)} type="button">
+                編輯
+              </button>
+            )}
+            {canManage && (
+              <button
+                className="rounded-md bg-white px-2 py-1 text-sm font-black"
+                onClick={() => onSetStatus(note.id, note.status === "archived" ? "normal" : "archived")}
+                type="button"
+              >
+                {note.status === "archived" ? "還原" : "封存"}
+              </button>
+            )}
+            {canManage && (
+              <button className="rounded-md bg-red-50 px-2 py-1 text-sm font-black text-red-700" onClick={() => confirmDelete(note.id)} type="button">
+                刪除
+              </button>
             )}
           </div>
         </div>
@@ -180,25 +229,58 @@ export function StickyWall({
         )}
 
         <div className="mt-4 space-y-1 text-base font-bold text-stone-700">
-          <p>來自：{teacherName(note.authorId, teachers)}</p>
+          <p>發布者：{teacherName(note.authorId, teachers)}</p>
           <p>對象：{teacherName(note.assigneeId, teachers)}</p>
-          <p>提醒：{dueText(note)}</p>
+          <p>期限：{dueText(note)}</p>
           <p>更新：{note.updatedAt}</p>
         </div>
 
-        <ActionBar subtle>
-          <ActionButton tone="primary" onClick={() => onConvert(note.id)} disabled={Boolean(note.convertedTaskId)}>
-            {note.convertedTaskId ? "已轉任務" : "轉正式任務"}
-          </ActionButton>
-          <select className="rounded-md border border-forest-100 bg-white px-3 py-2 text-base font-black" value={note.assigneeId ?? ""} onChange={(event) => onAssign(note.id, event.target.value)}>
-            <option value="">教導處主任</option>
-            <option value={ALL_STICKY_RECIPIENT_ID}>全體教師與主任</option>
-            {teacherOptions.map((teacher) => (
-              <option key={teacher.id} value={teacher.id}>{teacher.name}</option>
-            ))}
-          </select>
-          <ActionButton tone="quiet" onClick={() => onSetStatus(note.id, "replied")}>標記已回覆</ActionButton>
-        </ActionBar>
+        {canManageAll && (
+          <ActionBar subtle>
+            <ActionButton tone="primary" onClick={() => (note.convertedTaskId ? onOpenTask?.(note.convertedTaskId) : startConvert(note))}>
+              {note.convertedTaskId ? "查看任務" : "轉為任務"}
+            </ActionButton>
+            <select className="rounded-md border border-forest-100 bg-white px-3 py-2 text-base font-black" value={note.assigneeId ?? ""} onChange={(event) => onAssign(note.id, event.target.value)}>
+              <option value="">主任</option>
+              <option value={ALL_STICKY_RECIPIENT_ID}>全體教師</option>
+              {teacherOptions.map((teacher) => (
+                <option key={teacher.id} value={teacher.id}>{teacher.name}</option>
+              ))}
+            </select>
+            <ActionButton tone="quiet" onClick={() => onSetStatus(note.id, "replied")}>標記已回覆</ActionButton>
+          </ActionBar>
+        )}
+
+        {canManageAll && convertingNoteId === note.id && !note.convertedTaskId && (
+          <div className="mt-3 rounded-lg border border-forest-100 bg-white p-3">
+            <p className="text-lg font-black text-forest-800">轉為正式任務</p>
+            <p className="mt-1 text-base font-bold text-stone-700">會帶入便利貼標題與內容，主任可再調整分工與期限。</p>
+            <div className="mt-3 grid gap-2 md:grid-cols-4">
+              <select className="rounded-md border border-forest-100 bg-warm px-3 py-2 font-black" value={convertDraft.assigneeId} onChange={(event) => setConvertDraft((current) => ({ ...current, assigneeId: event.target.value }))}>
+                <option value="">尚未指派</option>
+                {teacherOptions.map((teacher) => (
+                  <option key={teacher.id} value={teacher.id}>{teacher.name}</option>
+                ))}
+              </select>
+              <input className="rounded-md border border-forest-100 bg-warm px-3 py-2 font-black" type="date" value={convertDraft.dueDate} onChange={(event) => setConvertDraft((current) => ({ ...current, dueDate: event.target.value }))} />
+              <select className="rounded-md border border-forest-100 bg-warm px-3 py-2 font-black" value={convertDraft.taskType} onChange={(event) => setConvertDraft((current) => ({ ...current, taskType: event.target.value }))}>
+                <option value="行政協作">行政協作</option>
+                <option value="臨時交辦">臨時交辦</option>
+                <option value="資料回報">資料回報</option>
+                <option value="活動準備">活動準備</option>
+              </select>
+              <select className="rounded-md border border-forest-100 bg-warm px-3 py-2 font-black" value={convertDraft.priority} onChange={(event) => setConvertDraft((current) => ({ ...current, priority: event.target.value as Priority }))}>
+                <option value="low">低</option>
+                <option value="normal">一般</option>
+                <option value="high">優先</option>
+              </select>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <ActionButton tone="primary" onClick={() => submitConvert(note.id)}>建立任務</ActionButton>
+              <ActionButton tone="quiet" onClick={() => setConvertingNoteId("")}>取消</ActionButton>
+            </div>
+          </div>
+        )}
       </article>
     );
   }
@@ -206,7 +288,7 @@ export function StickyWall({
   return (
     <section className="rounded-lg bg-white p-5 shadow-soft" id="sticky">
       <div>
-        <p className="text-xl font-bold text-forest-700">主任端與教師端的簡易訊息交流</p>
+        <p className="text-xl font-bold text-forest-700">主任與教師的行政交流</p>
         <h2 className="text-4xl font-black">便利貼交流牆</h2>
       </div>
 
@@ -215,10 +297,10 @@ export function StickyWall({
         <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_1fr_220px]">
           <input className="rounded-md border border-forest-100 bg-white px-4 py-3 text-lg font-bold" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="標題" />
           <select className="rounded-md border border-forest-100 bg-white px-3 py-2 text-base font-black" value={assigneeId} onChange={(event) => setAssigneeId(event.target.value)}>
-            <option value="">教導處主任</option>
-            <option value={ALL_STICKY_RECIPIENT_ID}>全體教師與主任</option>
+            <option value="">給主任</option>
+            <option value={ALL_STICKY_RECIPIENT_ID}>給全體教師</option>
             {teacherOptions.map((teacher) => (
-              <option key={teacher.id} value={teacher.id}>{teacher.name}</option>
+              <option key={teacher.id} value={teacher.id}>給{teacher.name}</option>
             ))}
           </select>
           <input className="rounded-md border border-forest-100 bg-white px-3 py-2 text-base font-black" type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} />
@@ -226,27 +308,35 @@ export function StickyWall({
         <textarea className="mt-3 min-h-28 w-full rounded-md border border-forest-100 bg-white px-4 py-3 text-lg font-bold" value={body} onChange={(event) => setBody(event.target.value)} placeholder="內容" />
         <div className="mt-3 flex flex-wrap gap-2">
           <select className="rounded-md border border-forest-100 bg-white px-3 py-2 text-base font-black" value={color} onChange={(event) => setColor(event.target.value as StickyColor)}>
-            <option value="yellow">黃色提醒</option>
-            <option value="blue">藍色想法</option>
-            <option value="green">綠色已處理</option>
-            <option value="red">紅色急件</option>
-            <option value="pink">粉色討論</option>
+            <option value="yellow">提醒</option>
+            <option value="blue">想法</option>
+            <option value="pink">問題</option>
+            <option value="green">回報</option>
+            <option value="red">急件</option>
           </select>
-          <ActionButton tone="primary" onClick={submitNote}>發布便利貼</ActionButton>
+          <ActionButton tone="primary" onClick={submitNote}>送出便利貼</ActionButton>
         </div>
       </div>
 
-      <div className="mt-5 grid gap-3 lg:grid-cols-3">
+      <div className="mt-5 grid gap-3 lg:grid-cols-4">
         <select className="rounded-md border border-forest-100 bg-rice px-3 py-2 text-base font-black" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as "all" | StickyNote["status"])}>
           <option value="all">全部狀態</option>
-          <option value="normal">未處理</option>
+          <option value="normal">一般</option>
           <option value="replied">已回覆</option>
           <option value="archived">已封存</option>
         </select>
+        <select className="rounded-md border border-forest-100 bg-rice px-3 py-2 text-base font-black" value={colorFilter} onChange={(event) => setColorFilter(event.target.value as "all" | StickyColor)}>
+          <option value="all">全部分類</option>
+          <option value="yellow">提醒</option>
+          <option value="blue">想法</option>
+          <option value="pink">問題</option>
+          <option value="green">回報</option>
+          <option value="red">急件</option>
+        </select>
         <select className="rounded-md border border-forest-100 bg-rice px-3 py-2 text-base font-black" value={targetFilter} onChange={(event) => setTargetFilter(event.target.value)}>
           <option value="all">全部對象</option>
-          <option value="">教導處主任</option>
-          <option value={ALL_STICKY_RECIPIENT_ID}>全體教師與主任</option>
+          <option value="">主任</option>
+          <option value={ALL_STICKY_RECIPIENT_ID}>全體教師</option>
           {teacherOptions.map((teacher) => (
             <option key={teacher.id} value={teacher.id}>{teacher.name}</option>
           ))}

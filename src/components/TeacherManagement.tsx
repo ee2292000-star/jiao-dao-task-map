@@ -71,12 +71,13 @@ export function TeacherManagement({
   const [isLoading, setIsLoading] = useState(false);
 
   const taskStats = useMemo(() => {
-    const stats = new Map<string, { total: number; done: number; doing: number; todo: number }>();
-    teachers.forEach((teacher) => stats.set(teacher.id, { total: 0, done: 0, doing: 0, todo: 0 }));
+    const emptyStats = { total: 0, done: 0, doing: 0, todo: 0, waiting: 0, review: 0, archived: 0 };
+    const stats = new Map<string, typeof emptyStats>();
+    teachers.forEach((teacher) => stats.set(teacher.id, { ...emptyStats }));
     tasks.forEach((task) => {
       const ids = new Set([task.assignedTo, ...task.ownerIds, ...task.assignees].filter(Boolean) as string[]);
       ids.forEach((id) => {
-        const current = stats.get(id) ?? { total: 0, done: 0, doing: 0, todo: 0 };
+        const current = stats.get(id) ?? { ...emptyStats };
         current.total += 1;
         current[task.status] += 1;
         stats.set(id, current);

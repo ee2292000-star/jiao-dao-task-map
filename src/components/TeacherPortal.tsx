@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { StickyColor, StickyNote, Task, Teacher } from "@/lib/types";
 import { getTeacherFocusTasks } from "@/lib/decisionSupport";
 import { getDaysLeft } from "@/lib/reminders";
@@ -37,8 +37,8 @@ type TeacherPortalProps = {
 
 const colorLabel: Record<StickyColor, string> = {
   yellow: "提醒",
-  pink: "討論",
-  green: "已處理",
+  pink: "問題",
+  green: "回報",
   blue: "想法",
   red: "急件"
 };
@@ -60,28 +60,29 @@ function assignedToAnyTeacherId(task: Task, teacherIds: string[]) {
 }
 
 function noteRecipient(note: StickyNote, teachers: Teacher[]) {
-  if (note.assigneeId === ALL_STICKY_RECIPIENT_ID) return "全體教師與主任";
-  if (!note.assigneeId) return "教導處主任";
-  return teachers.find((item) => item.id === note.assigneeId)?.name ?? "未指定對象";
+  if (note.assigneeId === ALL_STICKY_RECIPIENT_ID) return "全體教師";
+  if (!note.assigneeId) return "主任";
+  return teachers.find((item) => item.id === note.assigneeId)?.name ?? "尚未設定";
 }
 
 function noteAuthor(note: StickyNote, teachers: Teacher[], currentTeacher: Teacher) {
   if (note.authorId === currentTeacher.id) return currentTeacher.name;
-  return teachers.find((item) => item.id === note.authorId)?.name ?? "教導處主任";
+  return teachers.find((item) => item.id === note.authorId)?.name ?? "主任";
 }
 
 function noteDueText(note: StickyNote) {
-  if (!note.dueDate) return "沒有設定提醒日";
+  if (!note.dueDate) return "未設定期限";
   const daysLeft = getDaysLeft(note.dueDate);
   if (daysLeft < 0) return `已逾期 ${Math.abs(daysLeft)} 天`;
-  if (daysLeft === 0) return "今天提醒";
+  if (daysLeft === 0) return "今天到期";
   return `剩 ${daysLeft} 天`;
 }
 
 function isNoteRelatedToTeacher(note: StickyNote, identityIds: string[]) {
   return (
     note.assigneeId === ALL_STICKY_RECIPIENT_ID ||
-    identityIds.includes(note.assigneeId ?? "") ||
+    !note.assigneeId ||
+    identityIds.includes(note.assigneeId) ||
     identityIds.includes(note.authorId)
   );
 }
@@ -106,7 +107,7 @@ export function TeacherPortal({
   const [noteTitle, setNoteTitle] = useState("");
   const [noteBody, setNoteBody] = useState("");
   const [noteAssigneeId, setNoteAssigneeId] = useState("");
-  const [noteColor, setNoteColor] = useState<StickyColor>("yellow");
+  const [noteColor, setNoteColor] = useState<StickyColor>("green");
   const [noteDueDate, setNoteDueDate] = useState("");
   const [editingNoteId, setEditingNoteId] = useState("");
   const [editTitle, setEditTitle] = useState("");
@@ -119,7 +120,13 @@ export function TeacherPortal({
     .flatMap((teacherId) => getTeacherFocusTasks(tasks, teacherId, 2))
     .filter((item, index, allItems) => allItems.findIndex((other) => other.task.id === item.task.id) === index)
     .slice(0, 2);
-  const relatedNotes = notes.filter((note) => isNoteRelatedToTeacher(note, identityIds));
+  const relatedNotes = useMemo(
+    () =>
+      notes
+        .filter((note) => isNoteRelatedToTeacher(note, identityIds))
+        .sort((a, b) => (b.updatedAt || b.createdAt).localeCompare(a.updatedAt || a.createdAt)),
+    [identityIds, notes]
+  );
   const activeNotes = relatedNotes.filter((note) => note.status !== "archived");
   const archivedNotes = relatedNotes.filter((note) => note.status === "archived");
   const teacherOptions = teachers.filter((item) => item.enabled !== false);
@@ -139,7 +146,7 @@ export function TeacherPortal({
     setNoteTitle("");
     setNoteBody("");
     setNoteAssigneeId("");
-    setNoteColor("yellow");
+    setNoteColor("green");
     setNoteDueDate("");
   }
 
@@ -150,8 +157,9 @@ export function TeacherPortal({
   }
 
   function saveEditNote(noteId: string) {
-    if (!editBody.trim()) return;
-    onUpdateNote(noteId, { title: editTitle.trim() || editBody.slice(0, 24), body: editBody.trim() });
+    const nextBody = editBody.trim();
+    if (!nextBody) return;
+    onUpdateNote(noteId, { title: editTitle.trim() || nextBody.slice(0, 24), body: nextBody });
     setEditingNoteId("");
   }
 
@@ -175,13 +183,11 @@ export function TeacherPortal({
                 編輯
               </button>
             )}
-            <button
-              className="rounded-md bg-white px-2 py-1 text-sm font-black"
-              onClick={() => onSetNoteStatus(note.id, note.status === "archived" ? "normal" : "archived")}
-              type="button"
-            >
-              {note.status === "archived" ? "還原" : "封存"}
-            </button>
+            {isMine && (
+              <button className="rounded-md bg-white px-2 py-1 text-sm font-black" onClick={() => onSetNoteStatus(note.id, note.status === "archived" ? "normal" : "archived")} type="button">
+                {note.status === "archived" ? "還原" : "封存"}
+              </button>
+            )}
             {isMine && (
               <button className="rounded-md bg-red-50 px-2 py-1 text-sm font-black text-red-700" onClick={() => deleteNote(note.id)} type="button">
                 刪除
@@ -204,9 +210,9 @@ export function TeacherPortal({
         )}
 
         <div className="mt-3 space-y-1 text-base font-bold text-stone-700">
-          <p>來自：{noteAuthor(note, teachers, teacher)}</p>
+          <p>發布者：{noteAuthor(note, teachers, teacher)}</p>
           <p>對象：{noteRecipient(note, teachers)}</p>
-          <p>提醒：{noteDueText(note)}</p>
+          <p>期限：{noteDueText(note)}</p>
           <p>更新：{note.updatedAt}</p>
         </div>
       </article>
@@ -229,6 +235,7 @@ export function TeacherPortal({
 
       <section className="rounded-lg bg-white p-5 shadow-soft">
         <h3 className="text-4xl font-black">本週重點</h3>
+        <p className="mt-1 text-lg font-bold text-stone-700">系統會挑出最需要先看的 1 到 2 件任務。</p>
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
           {focusTasks.length ? (
             focusTasks.map(({ task, score, reasons }) => (
@@ -248,18 +255,29 @@ export function TeacherPortal({
               />
             ))
           ) : (
-            <p className="rounded-lg bg-rice p-5 text-2xl font-black text-forest-800">目前沒有需要優先處理的任務</p>
+            <p className="rounded-lg bg-rice p-5 text-2xl font-black text-forest-800">目前沒有需要優先處理的任務。</p>
           )}
         </div>
       </section>
 
       <section className="grid gap-5 xl:grid-cols-[1.2fr_1fr]">
         <div className="rounded-lg bg-white p-5 shadow-soft">
-          <h3 className="text-4xl font-black">我的任務列表</h3>
+          <h3 className="text-4xl font-black">任務列表</h3>
           <div className="mt-4 grid gap-4 lg:grid-cols-2">
             {myTasks.length ? (
               myTasks.map((task) => (
-                <TaskCard key={task.id} task={task} teachers={teachers} compact currentUserId={currentUserId} editableCommentAuthorIds={editableCommentAuthorIds} onStatusChange={onStatusChange} onQuickComment={onQuickComment} onUpdateComment={onUpdateComment} onDeleteComment={onDeleteComment} />
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  teachers={teachers}
+                  compact
+                  currentUserId={currentUserId}
+                  editableCommentAuthorIds={editableCommentAuthorIds}
+                  onStatusChange={onStatusChange}
+                  onQuickComment={onQuickComment}
+                  onUpdateComment={onUpdateComment}
+                  onDeleteComment={onDeleteComment}
+                />
               ))
             ) : (
               <p className="rounded-lg bg-rice p-5 text-xl font-black text-forest-800 lg:col-span-2">目前沒有指派給你的任務。</p>
@@ -269,15 +287,15 @@ export function TeacherPortal({
 
         <div className="space-y-5">
           <div className="rounded-lg bg-white p-5 shadow-soft">
-            <p className="text-xl font-bold text-forest-700">給主任或同事的協作訊息</p>
+            <p className="text-xl font-bold text-forest-700">傳給主任或同事的協作訊息</p>
             <h3 className="text-4xl font-black">新增便利貼</h3>
             <div className="mt-4 grid gap-3">
               <input className="rounded-md border border-forest-100 bg-warm px-4 py-3 text-lg font-bold" value={noteTitle} onChange={(event) => setNoteTitle(event.target.value)} placeholder="便利貼標題" />
-              <textarea className="min-h-28 rounded-md border border-forest-100 bg-warm px-4 py-3 text-lg font-bold" value={noteBody} onChange={(event) => setNoteBody(event.target.value)} placeholder="例如：午餐宣導海報已完成，想請主任確認。" />
+              <textarea className="min-h-28 rounded-md border border-forest-100 bg-warm px-4 py-3 text-lg font-bold" value={noteBody} onChange={(event) => setNoteBody(event.target.value)} placeholder="內容，例如：午餐宣導海報已完成，想請主任確認。" />
               <div className="grid gap-2 md:grid-cols-2">
                 <select className="rounded-md border border-forest-100 bg-warm px-3 py-2 text-base font-black" value={noteAssigneeId} onChange={(event) => setNoteAssigneeId(event.target.value)}>
-                  <option value="">送給教導處主任</option>
-                  <option value={ALL_STICKY_RECIPIENT_ID}>送給全體教師與主任</option>
+                  <option value="">送給主任</option>
+                  <option value={ALL_STICKY_RECIPIENT_ID}>送給全體教師</option>
                   {teacherOptions.map((item) => (
                     <option key={item.id} value={item.id}>送給{item.name}</option>
                   ))}
@@ -285,11 +303,11 @@ export function TeacherPortal({
                 <input className="rounded-md border border-forest-100 bg-warm px-3 py-2 text-base font-black" type="date" value={noteDueDate} onChange={(event) => setNoteDueDate(event.target.value)} />
               </div>
               <select className="rounded-md border border-forest-100 bg-warm px-3 py-2 text-base font-black" value={noteColor} onChange={(event) => setNoteColor(event.target.value as StickyColor)}>
-                <option value="yellow">黃色提醒</option>
-                <option value="blue">藍色想法</option>
-                <option value="green">綠色已處理</option>
-                <option value="red">紅色急件</option>
-                <option value="pink">粉色討論</option>
+                <option value="yellow">提醒</option>
+                <option value="blue">想法</option>
+                <option value="pink">問題</option>
+                <option value="green">回報</option>
+                <option value="red">急件</option>
               </select>
               <ActionButton tone="primary" onClick={submitNote}>送出便利貼</ActionButton>
             </div>
@@ -299,7 +317,7 @@ export function TeacherPortal({
             <div className="flex items-center justify-between gap-3">
               <h3 className="text-4xl font-black">我的便利貼</h3>
               <button className="rounded-md bg-rice px-3 py-2 text-base font-black" type="button" onClick={() => setShowArchive((value) => !value)}>
-                {showArchive ? "回主要畫面" : `封存區 ${archivedNotes.length}`}
+                {showArchive ? "回到主要便利貼" : `封存區 ${archivedNotes.length}`}
               </button>
             </div>
             <div className="mt-4 space-y-3">

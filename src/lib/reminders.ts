@@ -6,6 +6,10 @@ export function getDaysLeft(dueDate: string, today = new Date()): number {
   return Math.ceil((due - start) / (1000 * 60 * 60 * 24));
 }
 
+export function isTaskClosed(task: Task) {
+  return task.status === "done" || task.status === "archived";
+}
+
 export function buildReminders(tasks: Task[], teacherId?: string): Reminder[] {
   return tasks
     .filter((task) => !teacherId || task.ownerIds.includes(teacherId))
@@ -13,7 +17,7 @@ export function buildReminders(tasks: Task[], teacherId?: string): Reminder[] {
       const daysLeft = getDaysLeft(task.dueDate);
       const reminders: Reminder[] = [];
 
-      if (daysLeft < 0 && task.status !== "done") {
+      if (daysLeft < 0 && !isTaskClosed(task)) {
         reminders.push({
           id: `${task.id}-overdue`,
           type: "overdue",
@@ -21,17 +25,17 @@ export function buildReminders(tasks: Task[], teacherId?: string): Reminder[] {
           message: `${task.title} 已逾期 ${Math.abs(daysLeft)} 天`,
           level: "danger"
         });
-      } else if (daysLeft <= 3 && task.status !== "done") {
+      } else if (daysLeft <= 3 && !isTaskClosed(task)) {
         reminders.push({
           id: `${task.id}-soon`,
           type: "due-soon",
           taskId: task.id,
-          message: `${task.title} 剩 ${daysLeft} 天到期`,
+          message: `${task.title} 剩 ${Math.max(0, daysLeft)} 天到期`,
           level: "warning"
         });
       }
 
-      if (teacherId && task.ownerIds.includes(teacherId)) {
+      if (teacherId && task.ownerIds.includes(teacherId) && !isTaskClosed(task)) {
         reminders.push({
           id: `${task.id}-assigned`,
           type: "assigned",

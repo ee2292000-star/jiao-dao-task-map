@@ -1,7 +1,7 @@
 "use client";
 
 import type { Task, Teacher } from "@/lib/types";
-import { calculatePriorityScore, getPriorityReasons } from "@/lib/decisionSupport";
+import { calculatePriorityScore, getPriorityReasons, getStatusLabel } from "@/lib/decisionSupport";
 import { TaskCard } from "./TaskCard";
 
 type KanbanBoardProps = {
@@ -10,6 +10,7 @@ type KanbanBoardProps = {
   currentUserId?: string;
   editableCommentAuthorIds?: string[];
   canManageComments?: boolean;
+  canConfirmTask?: boolean;
   onStatusChange: (taskId: string, status: Task["status"]) => void;
   onPriorityChange: (taskId: string, priority: Task["priority"]) => void;
   onAssign: (taskId: string, ownerId: string) => void;
@@ -23,10 +24,13 @@ type KanbanBoardProps = {
   onOpenTask: (taskId: string) => void;
 };
 
-const columns: { id: Task["status"]; title: string; tone: string }[] = [
-  { id: "todo", title: "待辦", tone: "bg-stone-100" },
-  { id: "doing", title: "進行中", tone: "bg-blue-50" },
-  { id: "done", title: "已完成", tone: "bg-forest-50" }
+const columns: { id: Task["status"]; tone: string }[] = [
+  { id: "todo", tone: "bg-stone-100" },
+  { id: "doing", tone: "bg-blue-50" },
+  { id: "waiting", tone: "bg-yellow-50" },
+  { id: "review", tone: "bg-purple-50" },
+  { id: "done", tone: "bg-forest-50" },
+  { id: "archived", tone: "bg-stone-50" }
 ];
 
 export function KanbanBoard({
@@ -35,6 +39,7 @@ export function KanbanBoard({
   currentUserId,
   editableCommentAuthorIds,
   canManageComments = false,
+  canConfirmTask = false,
   onStatusChange,
   onPriorityChange,
   onAssign,
@@ -50,7 +55,7 @@ export function KanbanBoard({
   return (
     <section className="space-y-4" id="kanban">
       <div>
-        <p className="text-xl font-bold text-forest-700">拖曳任務即可更新狀態，也可直接在卡片上處理。</p>
+        <p className="text-xl font-bold text-forest-700">任務推進狀態</p>
         <h2 className="text-4xl font-black text-ink">任務看板</h2>
       </div>
 
@@ -60,14 +65,14 @@ export function KanbanBoard({
         </p>
       )}
 
-      <div className="grid gap-4 xl:grid-cols-3">
+      <div className="grid gap-4 xl:grid-cols-3 2xl:grid-cols-6">
         {columns.map((column) => {
           const columnTasks = tasks.filter((task) => task.status === column.id);
 
           return (
             <div
               key={column.id}
-              className={`min-h-[420px] rounded-lg border border-forest-100 ${column.tone} p-4`}
+              className={`min-h-[360px] rounded-lg border border-forest-100 ${column.tone} p-4`}
               onDragOver={(event) => {
                 event.preventDefault();
                 event.currentTarget.classList.add("drag-over");
@@ -80,7 +85,7 @@ export function KanbanBoard({
               }}
             >
               <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-2xl font-black text-ink">{column.title}</h2>
+                <h2 className="text-2xl font-black text-ink">{getStatusLabel(column.id)}</h2>
                 <span className="rounded-md bg-white px-3 py-1 text-lg font-bold text-forest-700">
                   {columnTasks.length}
                 </span>
@@ -95,6 +100,7 @@ export function KanbanBoard({
                     currentUserId={currentUserId}
                     editableCommentAuthorIds={editableCommentAuthorIds}
                     canManageComments={canManageComments}
+                    canConfirmTask={canConfirmTask}
                     onStatusChange={onStatusChange}
                     onPriorityChange={onPriorityChange}
                     onAssign={onAssign}

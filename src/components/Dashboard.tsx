@@ -1,18 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import type { Comment, Event, StickyNote, Task, Teacher } from "@/lib/types";
+import { useEffect, useMemo, useState } from "react";
+import type { Event, StickyColor, StickyNote, Task, Teacher } from "@/lib/types";
 import {
-  getEventProgress,
-  getEventRisks,
-  getRiskTasks,
+  getAssigneeIds,
   getStatusLabel,
-  getStickyActionSummary,
-  getTeacherLoadSuggestions,
   getTodayFocusTasks
 } from "@/lib/decisionSupport";
-import { buildReminders, getDaysLeft } from "@/lib/reminders";
-import { ActionBar, ActionButton } from "./ActionBar";
+import { buildReminders, getDaysLeft, isTaskClosed } from "@/lib/reminders";
+import { ActionButton } from "./ActionBar";
 
 type DashboardProps = {
   tasks: Task[];
@@ -21,42 +17,92 @@ type DashboardProps = {
   notes: StickyNote[];
   filter: string;
   actionMessage?: string;
-  currentUserId?: string;
-  editableCommentAuthorIds?: string[];
-  canManageComments?: boolean;
+  currentUserId: string;
   onFilterChange: (filter: string) => void;
   onStatusChange: (taskId: string, status: Task["status"]) => void;
   onPriorityChange: (taskId: string, priority: Task["priority"]) => void;
   onAssign: (taskId: string, ownerId: string) => void;
   onOpenTask: (taskId: string) => void;
   onRemind: (message: string) => void;
-  onUpdateComment?: (taskId: string, commentId: string, body: string) => void;
-  onDeleteComment?: (taskId: string, commentId: string) => void;
   onBalanceTasks: () => void;
   onDeferTask: (taskId: string) => void;
+  onCreateNote: (input: {
+    title?: string;
+    body: string;
+    assigneeId: string;
+    dueDate: string;
+    color: StickyColor;
+    authorId?: string;
+  }) => void;
 };
 
-function ownerNames(task: Task, teachers: Teacher[]) {
-  const names = teachers
-    .filter((teacher) => task.ownerIds.includes(teacher.id))
-    .map((teacher) => teacher.name);
+const READ_STORAGE_KEY = "jiao-dao-task-map:read-activity:v1";
+const ALL_STICKY_RECIPIENT_ID = "__all__";
+
+type ActivityItem = {
+  id: string;
+  kind: "sticky" | "urgent" | "task-due" | "task-overdue" | "task-review" | "task-done";
+  title: string;
+  detail: string;
+  time: string;
+  targetId: string;
+  targetType: "task" | "sticky";
+};
+
+function teacherName(id: string | undefined, teachers: Teacher[]) {
+  if (id === ALL_STICKY_RECIPIENT_ID) return "全體教師";
+  if (!id) return "主任";
+  return teachers.find((teacher) => teacher.id === id)?.name ?? "尚未指派";
+}
+
+function taskOwners(task: Task, teachers: Teacher[]) {
+  const names = teachers.filter((teacher) => getAssigneeIds(task).includes(teacher.id)).map((teacher) => teacher.name);
   return names.length ? names.join("、") : "尚未指派";
 }
 
-function authorName(authorId: string, teachers: Teacher[]) {
-  return teachers.find((teacher) => teacher.id === authorId)?.name ?? "系統留言";
+function stickyLabel(color: StickyColor) {
+  const labels: Record<StickyColor, string> = {
+    yellow: "提醒",
+    blue: "想法",
+    pink: "問題",
+    green: "回報",
+    red: "急件"
+  };
+  return labels[color];
 }
 
-function dayText(daysLeft: number, status: Task["status"]) {
-  if (status === "done") return "已完成";
-  if (daysLeft < 0) return `已逾期 ${Math.abs(daysLeft)} 天`;
-  return `剩 ${daysLeft} 天`;
+function stickyClass(color: StickyColor) {
+  const classes: Record<StickyColor, string> = {
+    yellow: "border-yellow-200 bg-yellow-50",
+    blue: "border-blue-200 bg-blue-50",
+    pink: "border-pink-200 bg-pink-50",
+    green: "border-green-200 bg-green-50",
+    red: "border-red-200 bg-red-50"
+  };
+  return classes[color];
 }
 
-function priorityLabel(priority: Task["priority"]) {
-  if (priority === "high") return "優先";
-  if (priority === "low") return "低";
-  return "一般";
+function useReadActivities() {
+  const [readIds, setReadIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(READ_STORAGE_KEY);
+      if (raw) setReadIds(JSON.parse(raw));
+    } catch {
+      setReadIds([]);
+    }
+  }, []);
+
+  function markRead(id: string) {
+    setReadIds((current) => {
+      const next = Array.from(new Set([...current, id]));
+      window.localStorage.setItem(READ_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  }
+
+  return { readIds, markRead };
 }
 
 export function Dashboard({
@@ -67,77 +113,134 @@ export function Dashboard({
   filter,
   actionMessage,
   currentUserId,
-  editableCommentAuthorIds = currentUserId ? [currentUserId] : [],
-  canManageComments = false,
   onFilterChange,
   onStatusChange,
   onPriorityChange,
   onAssign,
   onOpenTask,
   onRemind,
-  onUpdateComment,
-  onDeleteComment,
   onBalanceTasks,
-  onDeferTask
+  onDeferTask,
+  onCreateNote
 }: DashboardProps) {
-  const [editingTaskId, setEditingTaskId] = useState("");
-  const [editingCommentId, setEditingCommentId] = useState("");
-  const [editingCommentBody, setEditingCommentBody] = useState("");
-  const [ignoredReminderIds, setIgnoredReminderIds] = useState<string[]>([]);
+  const [quickTitle, setQuickTitle] = useState("");
+  const [quickBody, setQuickBody] = useState("");
+  const [quickTarget, setQuickTarget] = useState(ALL_STICKY_RECIPIENT_ID);
+  const [quickColor, setQuickColor] = useState<StickyColor>("yellow");
+  const { readIds, markRead } = useReadActivities();
   const teacherOptions = teachers.filter((teacher) => teacher.enabled !== false);
-
-  const dueThisWeek = tasks.filter((task) => {
-    const days = getDaysLeft(task.dueDate);
-    return days >= 0 && days <= 7 && task.status !== "done";
-  });
-  const done = tasks.filter((task) => task.status === "done");
-  const doing = tasks.filter((task) => task.status === "doing");
-  const overdue = tasks.filter((task) => getDaysLeft(task.dueDate) < 0 && task.status !== "done");
-  const unassigned = tasks.filter((task) => task.ownerIds.length === 0 && task.status !== "done");
-  const withComments = tasks.filter((task) => task.comments.length > 0 && task.status !== "done");
-  const stickySummary = getStickyActionSummary(notes);
-
   const priorityContext = { tasks, teachers, events };
-  const topPriorities = getTodayFocusTasks(tasks, priorityContext, 3);
-  const riskItems = getRiskTasks(tasks, priorityContext, 3);
-  const workloadHighlights = getTeacherLoadSuggestions(tasks, teachers).slice(0, 3);
-  const reminders = buildReminders(tasks)
-    .filter((reminder) => reminder.type !== "assigned" && !ignoredReminderIds.includes(reminder.id))
-    .slice(0, 4);
+  const todayFocus = getTodayFocusTasks(tasks, priorityContext, 3);
+  const reminders = buildReminders(tasks).slice(0, 6);
 
-  const overviewCards = [
-    { id: "week", label: "本週到期", value: dueThisWeek.length, className: "bg-white text-ink" },
-    { id: "done", label: "已完成", value: done.length, className: "bg-forest-700 text-white" },
-    { id: "doing", label: "進行中", value: doing.length, className: "bg-white text-ink" },
-    { id: "overdue", label: "逾期", value: overdue.length, className: "bg-red-700 text-white" }
-  ];
+  const activities = useMemo<ActivityItem[]>(() => {
+    const noteActivities = notes.map((note) => ({
+      id: `sticky-${note.id}-${note.updatedAt}`,
+      kind: (note.color === "red" ? "urgent" : "sticky") as ActivityItem["kind"],
+      title: note.color === "red" ? `急件便利貼：${note.title}` : `新增便利貼：${note.title}`,
+      detail: `${teacherName(note.authorId, teachers)} 給 ${teacherName(note.assigneeId, teachers)}｜${stickyLabel(note.color)}`,
+      time: note.updatedAt || note.createdAt,
+      targetId: note.id,
+      targetType: "sticky" as const
+    }));
 
-  function canEditComment(comment: Comment) {
-    return canManageComments || editableCommentAuthorIds.includes(comment.authorId);
+    const taskActivities = tasks.flatMap((task) => {
+      const days = getDaysLeft(task.dueDate);
+      const rows: ActivityItem[] = [];
+      if (!isTaskClosed(task) && days < 0) {
+        rows.push({
+          id: `task-overdue-${task.id}-${task.updatedAt}`,
+          kind: "task-overdue",
+          title: `任務已逾期：${task.title}`,
+          detail: `${taskOwners(task, teachers)}｜已逾期 ${Math.abs(days)} 天`,
+          time: task.updatedAt,
+          targetId: task.id,
+          targetType: "task"
+        });
+      } else if (!isTaskClosed(task) && days <= 3) {
+        rows.push({
+          id: `task-due-${task.id}-${task.dueDate}`,
+          kind: "task-due",
+          title: `任務即將到期：${task.title}`,
+          detail: `${taskOwners(task, teachers)}｜剩 ${Math.max(0, days)} 天`,
+          time: task.updatedAt,
+          targetId: task.id,
+          targetType: "task"
+        });
+      }
+      if (task.status === "review") {
+        rows.push({
+          id: `task-review-${task.id}-${task.updatedAt}`,
+          kind: "task-review",
+          title: `待主任確認：${task.title}`,
+          detail: `${taskOwners(task, teachers)} 已送出確認`,
+          time: task.updatedAt,
+          targetId: task.id,
+          targetType: "task"
+        });
+      }
+      if (task.status === "done") {
+        rows.push({
+          id: `task-done-${task.id}-${task.updatedAt}`,
+          kind: "task-done",
+          title: `任務已完成：${task.title}`,
+          detail: `${taskOwners(task, teachers)}｜已完成`,
+          time: task.updatedAt,
+          targetId: task.id,
+          targetType: "task"
+        });
+      }
+      return rows;
+    });
+
+    return [...noteActivities, ...taskActivities]
+      .sort((a, b) => b.time.localeCompare(a.time))
+      .slice(0, 8);
+  }, [notes, tasks, teachers]);
+
+  const unreadCount = activities.filter((item) => !readIds.includes(item.id)).length;
+  const activeNotes = notes
+    .filter((note) => note.status !== "archived")
+    .slice()
+    .sort((a, b) => (b.updatedAt || b.createdAt).localeCompare(a.updatedAt || a.createdAt))
+    .slice(0, 5);
+
+  const summary = {
+    dueSoon: tasks.filter((task) => {
+      const days = getDaysLeft(task.dueDate);
+      return !isTaskClosed(task) && days >= 0 && days <= 3;
+    }).length,
+    overdue: tasks.filter((task) => !isTaskClosed(task) && getDaysLeft(task.dueDate) < 0).length,
+    review: tasks.filter((task) => task.status === "review").length,
+    doing: tasks.filter((task) => task.status === "doing").length,
+    done: tasks.filter((task) => task.status === "done").length
+  };
+
+  function openActivity(item: ActivityItem) {
+    markRead(item.id);
+    if (item.targetType === "task") {
+      onOpenTask(item.targetId);
+      return;
+    }
+    document.getElementById("sticky")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  function startEditComment(comment: Comment) {
-    setEditingCommentId(comment.id);
-    setEditingCommentBody(comment.body);
-  }
-
-  function saveCommentEdit(taskId: string) {
-    const body = editingCommentBody.trim();
-    if (!body || !editingCommentId) return;
-    onUpdateComment?.(taskId, editingCommentId, body);
-    setEditingCommentId("");
-    setEditingCommentBody("");
-  }
-
-  function cancelCommentEdit() {
-    setEditingCommentId("");
-    setEditingCommentBody("");
-  }
-
-  function confirmDeleteComment(taskId: string, commentId: string) {
-    if (!window.confirm("確定要刪除此留言嗎？此動作無法復原。")) return;
-    onDeleteComment?.(taskId, commentId);
-    if (editingCommentId === commentId) cancelCommentEdit();
+  function submitQuickNote() {
+    const title = quickTitle.trim();
+    const body = quickBody.trim() || title;
+    if (!body) return;
+    onCreateNote({
+      title: title || body.slice(0, 24),
+      body,
+      assigneeId: quickTarget,
+      dueDate: "",
+      color: quickColor,
+      authorId: currentUserId
+    });
+    setQuickTitle("");
+    setQuickBody("");
+    setQuickTarget(ALL_STICKY_RECIPIENT_ID);
+    setQuickColor("yellow");
   }
 
   return (
@@ -148,397 +251,174 @@ export function Dashboard({
         </div>
       )}
 
-      <section className="grid gap-5 xl:grid-cols-[1.25fr_1fr_1fr]">
-        <div className="rounded-lg border border-amber-200 bg-white p-5 shadow-soft">
+      <section className="grid gap-5 xl:grid-cols-[1.1fr_1fr_1fr]">
+        <div className="rounded-lg border border-forest-100 bg-white p-5 shadow-soft">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-xl font-black text-amber-800">今日重點</p>
-              <h2 className="mt-1 text-4xl font-black text-ink">不用想，照順序處理</h2>
+              <p className="text-xl font-black text-forest-700">今日行政動態</p>
+              <h2 className="mt-1 text-4xl font-black text-ink">誰有訊息、什麼事要處理</h2>
             </div>
-            <span className="rounded-md bg-amber-50 px-3 py-2 text-base font-black text-amber-900">
-              {topPriorities.length} 件
+            <span className="rounded-md bg-amber-50 px-3 py-2 text-lg font-black text-amber-900">
+              未讀 {unreadCount}
             </span>
           </div>
 
           <div className="mt-5 space-y-3">
-            {topPriorities.length ? (
-              topPriorities.map(({ task, daysLeft, score, reasons }, index) => (
-                <div
-                  key={task.id}
-                  className={`rounded-lg border p-4 ${
-                    daysLeft < 0 ? "border-red-200 bg-red-50" : "border-amber-100 bg-amber-50"
-                  }`}
-                >
-                  <div className="grid gap-3 2xl:grid-cols-[42px_1fr_280px] 2xl:items-center">
-                    <span className="grid size-10 place-items-center rounded-md bg-white text-xl font-black">
-                      {index + 1}
-                    </span>
-                    <div className="min-w-0">
-                      <button
-                        className="text-left text-2xl font-black leading-snug text-ink"
-                        onClick={() => onOpenTask(task.id)}
-                        type="button"
-                      >
-                        {task.title}
-                      </button>
-                      <p className="mt-2 text-lg font-bold text-stone-700">
-                        {ownerNames(task, teachers)} / {getStatusLabel(task.status)} /{" "}
-                        <span className={daysLeft < 0 ? "text-red-700" : "text-amber-800"}>
-                          {dayText(daysLeft, task.status)}
-                        </span>
-                      </p>
-                      <p className="mt-1 text-base font-bold text-stone-600">
-                        排序原因：{reasons.slice(0, 2).join("、") || "依規則排序"}
-                        <span className="ml-2 text-sm text-stone-500">分數 {score}</span>
-                      </p>
-                      {task.comments.length > 0 && (
-                        <button
-                          className="mt-2 inline-flex rounded-md bg-blue-50 px-3 py-1 text-base font-black text-blue-800 hover:bg-blue-100"
-                          onClick={() => setEditingTaskId(editingTaskId === task.id ? "" : task.id)}
-                          type="button"
-                          aria-expanded={editingTaskId === task.id}
-                        >
-                          留言 {task.comments.length}
-                        </button>
-                      )}
-                    </div>
-                    <ActionBar subtle>
-                      <ActionButton
-                        tone="primary"
-                        onClick={() => setEditingTaskId(editingTaskId === task.id ? "" : task.id)}
-                      >
-                        處理
-                      </ActionButton>
-                      <ActionButton tone="quiet" onClick={() => onStatusChange(task.id, "done")}>
-                        完成
-                      </ActionButton>
-                      <select
-                        className="rounded-md border border-forest-100 bg-white px-3 py-2 text-base font-black"
-                        value={task.ownerIds[0] ?? ""}
-                        onChange={(event) => onAssign(task.id, event.target.value)}
-                        aria-label="改派負責人"
-                      >
-                        <option value="">未指派</option>
-                        {teacherOptions.map((teacher) => (
-                          <option key={teacher.id} value={teacher.id}>
-                            {teacher.name}
-                          </option>
-                        ))}
-                      </select>
-                      <ActionButton tone="warm" onClick={() => onRemind(`已送出提醒：${task.title}`)}>
-                        催辦
-                      </ActionButton>
-                    </ActionBar>
-                  </div>
-
-                  {editingTaskId === task.id && (
-                    <div className="mt-3 space-y-3 rounded-md border border-forest-100 bg-white p-3">
-                      <div className="grid gap-2 md:grid-cols-3">
-                        <select
-                          className="rounded-md border border-forest-100 bg-warm px-3 py-2 font-bold"
-                          value={task.status}
-                          onChange={(event) => onStatusChange(task.id, event.target.value as Task["status"])}
-                        >
-                          <option value="todo">待辦</option>
-                          <option value="doing">進行中</option>
-                          <option value="done">完成</option>
-                        </select>
-                        <select
-                          className="rounded-md border border-forest-100 bg-warm px-3 py-2 font-bold"
-                          value={task.priority}
-                          onChange={(event) => onPriorityChange(task.id, event.target.value as Task["priority"])}
-                        >
-                          <option value="high">優先</option>
-                          <option value="normal">一般</option>
-                          <option value="low">低</option>
-                        </select>
-                        <ActionButton tone="primary" onClick={() => onStatusChange(task.id, "doing")}>
-                          改為進行中
-                        </ActionButton>
+            {activities.length ? (
+              activities.map((item) => {
+                const unread = !readIds.includes(item.id);
+                return (
+                  <button
+                    key={item.id}
+                    className={`w-full rounded-lg border p-4 text-left ${unread ? "border-amber-200 bg-amber-50" : "border-forest-100 bg-warm"}`}
+                    type="button"
+                    onClick={() => openActivity(item)}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xl font-black text-ink">{item.title}</p>
+                        <p className="mt-1 text-base font-bold text-stone-700">{item.detail}</p>
                       </div>
-
-                      <div className="rounded-md bg-rice p-3">
-                        <p className="text-base font-black text-forest-700">留言紀錄</p>
-                        {task.comments.length ? (
-                          <div className="mt-2 space-y-2">
-                            {task.comments.slice().reverse().map((comment) => {
-                              const editable = canEditComment(comment);
-                              return (
-                                <div key={comment.id} className="rounded-md bg-white px-3 py-2">
-                                  {editingCommentId === comment.id ? (
-                                    <div className="grid gap-2">
-                                      <input
-                                        className="rounded-md border border-forest-100 bg-warm px-3 py-2 text-base font-bold"
-                                        value={editingCommentBody}
-                                        onChange={(event) => setEditingCommentBody(event.target.value)}
-                                        aria-label="編輯留言"
-                                      />
-                                      <div className="flex flex-wrap gap-2">
-                                        <ActionButton tone="primary" onClick={() => saveCommentEdit(task.id)}>
-                                          儲存留言
-                                        </ActionButton>
-                                        <ActionButton tone="quiet" onClick={cancelCommentEdit}>
-                                          取消
-                                        </ActionButton>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <>
-                                      <p className="text-base font-black text-ink">{comment.body}</p>
-                                      <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
-                                        <p className="text-sm font-bold text-stone-600">
-                                          {authorName(comment.authorId, teachers)} / {comment.createdAt}
-                                        </p>
-                                        {editable && (
-                                          <div className="flex gap-2">
-                                            <button
-                                              className="rounded-md bg-forest-50 px-2 py-1 text-sm font-black text-forest-800 hover:bg-forest-100"
-                                              type="button"
-                                              onClick={() => startEditComment(comment)}
-                                            >
-                                              編輯
-                                            </button>
-                                            <button
-                                              className="rounded-md bg-red-50 px-2 py-1 text-sm font-black text-red-700 hover:bg-red-100"
-                                              type="button"
-                                              onClick={() => confirmDeleteComment(task.id, comment.id)}
-                                            >
-                                              刪除
-                                            </button>
-                                          </div>
-                                        )}
-                                      </div>
-                                    </>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <p className="mt-2 rounded-md bg-white px-3 py-2 text-base font-bold text-stone-600">
-                            尚未留言
-                          </p>
-                        )}
-                      </div>
+                      {unread && <span className="rounded-md bg-forest-700 px-2 py-1 text-sm font-black text-white">新</span>}
                     </div>
-                  )}
-                </div>
-              ))
-            ) : (
-              <p className="rounded-lg bg-rice p-5 text-2xl font-black text-forest-800">
-                目前沒有需要優先處理的任務
-              </p>
-            )}
-          </div>
-        </div>
-
-        <div className="rounded-lg border border-orange-100 bg-white p-5 shadow-soft">
-          <p className="text-xl font-black text-red-700">風險與卡關</p>
-          <h2 className="mt-1 text-4xl font-black text-ink">直接做決策</h2>
-          <div className="mt-5 space-y-3">
-            {riskItems.length ? (
-              riskItems.map((item) => (
-                <div key={item.id} className="rounded-lg border border-orange-100 bg-orange-50 p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="text-xl font-black text-ink">{item.reason}</p>
-                      <p className="mt-1 text-base font-bold text-stone-700">
-                        {item.eventName} / {item.category} / 分數 {item.score}
-                      </p>
-                    </div>
-                    <span className="rounded-md bg-white px-2 py-1 text-sm font-black text-red-700">
-                      {item.category}
-                    </span>
-                  </div>
-                  <p className="mt-2 text-base font-bold leading-relaxed text-stone-700">
-                    {item.suggestion}
-                  </p>
-                  <ActionBar subtle>
-                    {item.taskId && (
-                      <>
-                        <select
-                          className="rounded-md border border-forest-100 bg-white px-3 py-2 text-base font-black"
-                          defaultValue=""
-                          onChange={(event) => item.taskId && onAssign(item.taskId, event.target.value)}
-                          aria-label="立即指派"
-                        >
-                          <option value="">立即指派</option>
-                          {teacherOptions.map((teacher) => (
-                            <option key={teacher.id} value={teacher.id}>
-                              {teacher.name}
-                            </option>
-                          ))}
-                        </select>
-                        <ActionButton tone="warm" onClick={() => onPriorityChange(item.taskId!, "high")}>
-                          設為優先
-                        </ActionButton>
-                        <ActionButton tone="quiet" onClick={() => onOpenTask(item.taskId!)}>
-                          查看任務
-                        </ActionButton>
-                      </>
-                    )}
-                    <ActionButton tone="primary" onClick={() => (item.taskId ? onRemind(item.reason) : onFilterChange("week"))}>
-                      快速補救
-                    </ActionButton>
-                  </ActionBar>
-                </div>
-              ))
+                    <p className="mt-2 text-sm font-bold text-stone-500">{item.time}</p>
+                  </button>
+                );
+              })
             ) : (
               <p className="rounded-lg bg-rice p-5 text-xl font-black text-forest-800">
-                目前沒有風險與卡關任務
+                目前沒有新的行政動態。
               </p>
             )}
           </div>
         </div>
 
         <div className="rounded-lg border border-forest-100 bg-white p-5 shadow-soft">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-xl font-black text-forest-700">分工與負荷</p>
-              <h2 className="mt-1 text-4xl font-black text-ink">協助支援</h2>
-            </div>
-            <ActionButton tone="primary" onClick={onBalanceTasks}>平均分配</ActionButton>
+          <p className="text-xl font-black text-forest-700">任務推進狀態</p>
+          <h2 className="mt-1 text-4xl font-black text-ink">先看進度，再做決定</h2>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            {[
+              ["即將到期", summary.dueSoon, "week", "bg-amber-50 text-amber-900"],
+              ["已逾期", summary.overdue, "overdue", "bg-red-50 text-red-800"],
+              ["待主任確認", summary.review, "review", "bg-purple-50 text-purple-800"],
+              ["進行中", summary.doing, "doing", "bg-blue-50 text-blue-800"],
+              ["已完成", summary.done, "done", "bg-forest-50 text-forest-800"]
+            ].map(([label, value, nextFilter, className]) => (
+              <button
+                key={String(label)}
+                className={`rounded-lg p-4 text-left ${className} ${filter === nextFilter ? "ring-4 ring-amber-200" : ""}`}
+                type="button"
+                onClick={() => onFilterChange(filter === nextFilter ? "all" : String(nextFilter))}
+              >
+                <p className="text-base font-black">{label}</p>
+                <p className="mt-1 text-4xl font-black">{value}</p>
+              </button>
+            ))}
           </div>
+
           <div className="mt-5 space-y-3">
-            {workloadHighlights.length ? (
-              workloadHighlights.map((item) => (
-                <div key={item.teacher.id} className="rounded-lg border border-forest-100 bg-rice p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-2xl font-black">{item.teacher.name}</p>
-                    <p className="text-base font-bold text-stone-600">{item.teacher.role}</p>
+            <p className="text-lg font-black text-forest-800">今日建議先看</p>
+            {todayFocus.length ? (
+              todayFocus.map(({ task, score, reasons }) => (
+                <div key={task.id} className="rounded-lg border border-forest-100 bg-rice p-3">
+                  <button className="text-left text-xl font-black text-ink" type="button" onClick={() => onOpenTask(task.id)}>
+                    {task.title}
+                  </button>
+                  <p className="mt-1 text-base font-bold text-stone-700">
+                    {taskOwners(task, teachers)}｜{getStatusLabel(task.status)}｜分數 {score}
+                  </p>
+                  <p className="mt-1 text-sm font-bold text-stone-600">原因：{reasons.slice(0, 2).join("、") || "依期限排序"}</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <ActionButton tone="primary" onClick={() => onStatusChange(task.id, "doing")}>推進</ActionButton>
+                    <ActionButton tone="quiet" onClick={() => onOpenTask(task.id)}>查看</ActionButton>
+                    <ActionButton tone="warm" onClick={() => onPriorityChange(task.id, "high")}>標優先</ActionButton>
                   </div>
-                  <p className="mt-2 text-lg font-black text-forest-800">
-                    任務 {item.taskCount} 件 / 即將到期 {item.dueSoonCount} 件 / 逾期 {item.overdueCount} 件
-                  </p>
-                  <p className="mt-1 text-base font-bold leading-relaxed text-stone-700">
-                    {item.suggestion}
-                  </p>
-                  <ActionBar subtle>
-                    <ActionButton tone="quiet" onClick={() => onFilterChange(`teacher:${item.teacher.id}`)}>
-                      查看任務
-                    </ActionButton>
-                    <ActionButton tone="warm" onClick={() => onFilterChange("unassigned")}>
-                      分配任務
-                    </ActionButton>
-                  </ActionBar>
                 </div>
               ))
             ) : (
-              <p className="rounded-lg bg-rice p-5 text-xl font-black text-forest-800">
-                尚未建立教師資料
+              <p className="rounded-lg bg-rice p-4 text-lg font-black text-forest-800">
+                目前沒有需要優先處理的任務。
               </p>
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-forest-100 bg-white p-5 shadow-soft">
+          <p className="text-xl font-black text-forest-700">交流便利貼</p>
+          <h2 className="mt-1 text-4xl font-black text-ink">行政訊息先記下來</h2>
+
+          <div className="mt-5 grid gap-3 rounded-lg border border-forest-100 bg-warm p-4">
+            <input className="rounded-md border border-forest-100 bg-white px-3 py-2 text-lg font-bold" value={quickTitle} onChange={(event) => setQuickTitle(event.target.value)} placeholder="便利貼標題" />
+            <textarea className="min-h-20 rounded-md border border-forest-100 bg-white px-3 py-2 text-lg font-bold" value={quickBody} onChange={(event) => setQuickBody(event.target.value)} placeholder="內容，例如：請各班協助回報名單" />
+            <div className="grid gap-2 sm:grid-cols-2">
+              <select className="rounded-md border border-forest-100 bg-white px-3 py-2 font-black" value={quickTarget} onChange={(event) => setQuickTarget(event.target.value)}>
+                <option value={ALL_STICKY_RECIPIENT_ID}>給全體教師</option>
+                <option value="">給主任</option>
+                {teacherOptions.map((teacher) => (
+                  <option key={teacher.id} value={teacher.id}>給{teacher.name}</option>
+                ))}
+              </select>
+              <select className="rounded-md border border-forest-100 bg-white px-3 py-2 font-black" value={quickColor} onChange={(event) => setQuickColor(event.target.value as StickyColor)}>
+                <option value="yellow">提醒</option>
+                <option value="blue">想法</option>
+                <option value="pink">問題</option>
+                <option value="green">回報</option>
+                <option value="red">急件</option>
+              </select>
+            </div>
+            <ActionButton tone="primary" onClick={submitQuickNote}>新增便利貼</ActionButton>
+          </div>
+
+          <div className="mt-5 space-y-3">
+            {activeNotes.length ? (
+              activeNotes.map((note) => (
+                <button
+                  key={note.id}
+                  type="button"
+                  className={`w-full rounded-lg border p-3 text-left ${stickyClass(note.color)}`}
+                  onClick={() => document.getElementById("sticky")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-lg font-black text-ink">{note.title}</p>
+                    <span className="rounded-md bg-white px-2 py-1 text-sm font-black">{stickyLabel(note.color)}</span>
+                  </div>
+                  <p className="mt-1 line-clamp-2 text-base font-bold text-stone-700">{note.body}</p>
+                </button>
+              ))
+            ) : (
+              <p className="rounded-lg bg-rice p-4 text-lg font-black text-forest-800">目前沒有便利貼。</p>
             )}
           </div>
         </div>
       </section>
 
       <section className="rounded-lg bg-white p-5 shadow-soft">
-        <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-end">
+        <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
           <div>
-            <p className="text-lg font-bold text-forest-700">輔助資訊</p>
-            <h2 className="text-3xl font-black text-ink">任務摘要與提醒</h2>
+            <p className="text-lg font-bold text-forest-700">提醒摘要</p>
+            <h2 className="text-3xl font-black text-ink">近期要注意的任務</h2>
           </div>
-          <p className="text-base font-bold text-stone-600">點擊卡片可切換任務篩選</p>
-        </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-4">
-          {overviewCards.map((card) => (
-            <button
-              key={card.id}
-              className={`rounded-lg p-4 text-left shadow-soft ${card.className} ${
-                filter === card.id ? "ring-4 ring-amber-300" : ""
-              }`}
-              onClick={() => onFilterChange(filter === card.id ? "all" : card.id)}
-              type="button"
-            >
-              <p className="text-lg font-bold opacity-80">{card.label}</p>
-              <p className="mt-2 text-4xl font-black">{card.value}</p>
-            </button>
-          ))}
-        </div>
-        <div className="mt-4 grid gap-3 lg:grid-cols-4">
-          <button className="rounded-lg bg-rice p-4 text-left text-lg font-black" onClick={() => onFilterChange("unassigned")} type="button">
-            尚未指派 {unassigned.length}
-          </button>
-          <button className="rounded-lg bg-rice p-4 text-left text-lg font-black" onClick={() => onFilterChange("comments")} type="button">
-            有留言 {withComments.length}
-          </button>
-          <p className="rounded-lg bg-rice p-4 text-lg font-black">
-            便利貼 {stickySummary.open} 張 / 近期到期 {stickySummary.dueSoon}
-          </p>
-          <ActionButton tone="primary" onClick={() => reminders[0] && onOpenTask(reminders[0].taskId)} disabled={!reminders[0]}>
-            處理最近提醒
-          </ActionButton>
+          <div className="flex flex-wrap gap-2">
+            <ActionButton tone="quiet" onClick={onBalanceTasks}>檢視分工</ActionButton>
+            <ActionButton tone="primary" onClick={() => document.getElementById("kanban")?.scrollIntoView({ behavior: "smooth" })}>前往任務看板</ActionButton>
+          </div>
         </div>
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
           {reminders.length ? (
             reminders.map((reminder) => (
               <div key={reminder.id} className="rounded-lg border border-amber-100 bg-amber-50 p-3">
                 <p className="text-lg font-black text-amber-900">{reminder.message}</p>
-                <ActionBar subtle>
-                  <ActionButton tone="primary" onClick={() => onOpenTask(reminder.taskId)}>
-                    立即處理
-                  </ActionButton>
-                  <ActionButton tone="quiet" onClick={() => onDeferTask(reminder.taskId)}>
-                    延後
-                  </ActionButton>
-                  <ActionButton tone="quiet" onClick={() => setIgnoredReminderIds((ids) => [...ids, reminder.id])}>
-                    忽略
-                  </ActionButton>
-                </ActionBar>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <ActionButton tone="primary" onClick={() => onOpenTask(reminder.taskId)}>立即處理</ActionButton>
+                  <ActionButton tone="quiet" onClick={() => onDeferTask(reminder.taskId)}>延後</ActionButton>
+                  <ActionButton tone="quiet" onClick={() => onRemind(reminder.message)}>催辦</ActionButton>
+                </div>
               </div>
             ))
           ) : (
-            <p className="rounded-lg bg-rice p-4 text-lg font-black text-forest-800">
-              目前沒有提醒
-            </p>
-          )}
-        </div>
-      </section>
-
-      <section className="rounded-lg bg-white p-5 shadow-soft">
-        <div>
-          <p className="text-lg font-bold text-forest-700">活動進度</p>
-          <h2 className="text-3xl font-black text-ink">大型活動準備情形</h2>
-        </div>
-        <div className="mt-5 grid gap-4 xl:grid-cols-3">
-          {events.length ? (
-            events.map((event) => {
-              const percent = getEventProgress(event, tasks);
-              const risks = getEventRisks(event, tasks);
-              const eventTasks = tasks.filter((task) => task.eventId === event.id);
-              const firstUnassigned = eventTasks.find((task) => task.ownerIds.length === 0 && task.status !== "done");
-              return (
-                <div key={event.id} className="rounded-lg border border-forest-100 bg-warm p-4">
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-2xl font-black">{event.name}</span>
-                    <span className="text-2xl font-black text-forest-700">{percent}%</span>
-                  </div>
-                  <div className="h-4 overflow-hidden rounded-md bg-forest-50">
-                    <div className="h-full bg-forest-500" style={{ width: `${percent}%` }} />
-                  </div>
-                  <p className="mt-3 text-base font-bold text-amber-800">卡關：{risks.blocking}</p>
-                  <p className="mt-1 text-base font-bold text-red-800">風險：{risks.risk}</p>
-                  <ActionBar subtle>
-                    <ActionButton tone="quiet" onClick={() => onFilterChange(`event:${event.id}`)}>
-                      查看任務
-                    </ActionButton>
-                    <ActionButton
-                      tone="warm"
-                      onClick={() => firstUnassigned && onAssign(firstUnassigned.id, teacherOptions[0]?.id ?? "")}
-                      disabled={!firstUnassigned}
-                    >
-                      補齊未指派
-                    </ActionButton>
-                    <ActionButton tone="primary" onClick={() => onRemind(`已提醒 ${event.name} 的負責人`)}>
-                      提醒全部
-                    </ActionButton>
-                  </ActionBar>
-                </div>
-              );
-            })
-          ) : (
-            <p className="rounded-lg bg-rice p-5 text-xl font-black text-forest-800 xl:col-span-3">
-              尚未建立活動
+            <p className="rounded-lg bg-rice p-4 text-lg font-black text-forest-800 lg:col-span-2">
+              目前沒有提醒。
             </p>
           )}
         </div>
