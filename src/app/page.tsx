@@ -1457,6 +1457,7 @@ export default function Home() {
                     onPriorityChange={handlePriorityChange}
                     onAssign={handleAssign}
                     onOpenTask={setSelectedTaskId}
+                    onNavigate={setCurrentSection}
                     onCreateNote={handleCreateNote}
                   />
                 )}

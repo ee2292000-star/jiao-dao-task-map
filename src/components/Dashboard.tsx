@@ -23,6 +23,7 @@ type DashboardProps = {
   onPriorityChange: (taskId: string, priority: Task["priority"]) => void;
   onAssign: (taskId: string, ownerId: string) => void;
   onOpenTask: (taskId: string) => void;
+  onNavigate?: (section: string) => void;
   onCreateNote: (input: {
     title?: string;
     body: string;
@@ -115,6 +116,7 @@ export function Dashboard({
   onPriorityChange,
   onAssign,
   onOpenTask,
+  onNavigate,
   onCreateNote
 }: DashboardProps) {
   const [quickTitle, setQuickTitle] = useState("");
@@ -243,7 +245,7 @@ export function Dashboard({
         </div>
       )}
 
-      <section className="grid gap-5 xl:grid-cols-[1.1fr_1fr_1fr]">
+      <section className="grid items-start gap-5 xl:grid-cols-[1.1fr_1fr_1fr]">
         <div className="rounded-lg border border-forest-100 bg-white p-5 shadow-soft">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -382,6 +384,35 @@ export function Dashboard({
               <p className="rounded-lg bg-rice p-4 text-lg font-black text-forest-800">目前沒有便利貼。</p>
             )}
           </div>
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-forest-100 bg-white p-5 shadow-soft">
+        <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
+          <div>
+            <p className="text-lg font-bold text-forest-700">次要功能入口</p>
+            <h2 className="text-3xl font-black text-ink">需要看細節時，再進入完整頁面</h2>
+          </div>
+          <p className="rounded-md bg-rice px-4 py-3 text-base font-bold text-stone-700">
+            首頁保留決策資訊，完整資料放在左側選單。
+          </p>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            ["任務看板", "kanban"],
+            ["活動時間軸", "timeline"],
+            ["交流便利貼", "sticky"],
+            ["教師管理", "settings"]
+          ].map(([label, section]) => (
+            <button
+              key={section}
+              className="rounded-lg border border-forest-100 bg-warm px-4 py-4 text-left text-xl font-black text-forest-800 hover:bg-forest-50"
+              type="button"
+              onClick={() => onNavigate?.(section)}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       </section>
     </div>
