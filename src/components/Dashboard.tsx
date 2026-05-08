@@ -7,7 +7,7 @@ import {
   getStatusLabel,
   getTodayFocusTasks
 } from "@/lib/decisionSupport";
-import { buildReminders, getDaysLeft, isTaskClosed } from "@/lib/reminders";
+import { getDaysLeft, isTaskClosed } from "@/lib/reminders";
 import { ActionButton } from "./ActionBar";
 
 type DashboardProps = {
@@ -23,9 +23,6 @@ type DashboardProps = {
   onPriorityChange: (taskId: string, priority: Task["priority"]) => void;
   onAssign: (taskId: string, ownerId: string) => void;
   onOpenTask: (taskId: string) => void;
-  onRemind: (message: string) => void;
-  onBalanceTasks: () => void;
-  onDeferTask: (taskId: string) => void;
   onCreateNote: (input: {
     title?: string;
     body: string;
@@ -118,9 +115,6 @@ export function Dashboard({
   onPriorityChange,
   onAssign,
   onOpenTask,
-  onRemind,
-  onBalanceTasks,
-  onDeferTask,
   onCreateNote
 }: DashboardProps) {
   const [quickTitle, setQuickTitle] = useState("");
@@ -131,8 +125,6 @@ export function Dashboard({
   const teacherOptions = teachers.filter((teacher) => teacher.enabled !== false);
   const priorityContext = { tasks, teachers, events };
   const todayFocus = getTodayFocusTasks(tasks, priorityContext, 3);
-  const reminders = buildReminders(tasks).slice(0, 6);
-
   const activities = useMemo<ActivityItem[]>(() => {
     const noteActivities = notes.map((note) => ({
       id: `sticky-${note.id}-${note.updatedAt}`,
@@ -390,37 +382,6 @@ export function Dashboard({
               <p className="rounded-lg bg-rice p-4 text-lg font-black text-forest-800">目前沒有便利貼。</p>
             )}
           </div>
-        </div>
-      </section>
-
-      <section className="rounded-lg bg-white p-5 shadow-soft">
-        <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
-          <div>
-            <p className="text-lg font-bold text-forest-700">提醒摘要</p>
-            <h2 className="text-3xl font-black text-ink">近期要注意的任務</h2>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <ActionButton tone="quiet" onClick={onBalanceTasks}>檢視分工</ActionButton>
-            <ActionButton tone="primary" onClick={() => document.getElementById("kanban")?.scrollIntoView({ behavior: "smooth" })}>前往任務看板</ActionButton>
-          </div>
-        </div>
-        <div className="mt-4 grid gap-3 lg:grid-cols-2">
-          {reminders.length ? (
-            reminders.map((reminder) => (
-              <div key={reminder.id} className="rounded-lg border border-amber-100 bg-amber-50 p-3">
-                <p className="text-lg font-black text-amber-900">{reminder.message}</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <ActionButton tone="primary" onClick={() => onOpenTask(reminder.taskId)}>立即處理</ActionButton>
-                  <ActionButton tone="quiet" onClick={() => onDeferTask(reminder.taskId)}>延後</ActionButton>
-                  <ActionButton tone="quiet" onClick={() => onRemind(reminder.message)}>催辦</ActionButton>
-                </div>
-              </div>
-            ))
-          ) : (
-            <p className="rounded-lg bg-rice p-4 text-lg font-black text-forest-800 lg:col-span-2">
-              目前沒有提醒。
-            </p>
-          )}
         </div>
       </section>
     </div>

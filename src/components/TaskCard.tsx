@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import type { Comment, Task, Teacher } from "@/lib/types";
 import { getPriorityLabel, getStatusLabel } from "@/lib/decisionSupport";
 import { getDaysLeft, isTaskClosed } from "@/lib/reminders";
-import { ActionBar, ActionButton } from "./ActionBar";
+import { ActionButton } from "./ActionBar";
 
 type TaskCardProps = {
   task: Task;
@@ -38,8 +38,8 @@ const statusClass: Record<Task["status"], string> = {
   archived: "bg-stone-50 text-stone-500"
 };
 
-const editableStatuses: Task["status"][] = ["todo", "doing", "waiting", "review"];
-const adminStatuses: Task["status"][] = ["todo", "doing", "waiting", "review", "done", "archived"];
+const teacherStatuses: Task["status"][] = ["todo", "doing", "waiting", "review"];
+const directorStatuses: Task["status"][] = ["todo", "doing", "waiting", "review", "done", "archived"];
 
 function dayText(daysLeft: number, status: Task["status"]) {
   if (status === "done") return "已完成";
@@ -92,7 +92,7 @@ export function TaskCard({
   const activeTeacherOptions = teachers.filter((teacher) => teacher.enabled !== false);
   const daysLeft = getDaysLeft(task.dueDate);
   const isOverdue = daysLeft < 0 && !isTaskClosed(task);
-  const statusOptions = canConfirmTask ? adminStatuses : editableStatuses;
+  const statusOptions = canConfirmTask ? directorStatuses : teacherStatuses;
 
   useEffect(() => {
     setDraft({
@@ -111,11 +111,6 @@ export function TaskCard({
     onQuickComment?.(task.id, body);
     setComment("");
     setExpanded(true);
-  }
-
-  function startEditComment(item: Comment) {
-    setEditingCommentId(item.id);
-    setEditingCommentBody(item.body);
   }
 
   function saveCommentEdit() {
@@ -147,7 +142,7 @@ export function TaskCard({
       assignedTo: draft.ownerId || undefined,
       dueDate: draft.dueDate,
       priority: draft.priority,
-      status: canConfirmTask || editableStatuses.includes(draft.status) ? draft.status : task.status
+      status: canConfirmTask || teacherStatuses.includes(draft.status) ? draft.status : task.status
     });
     setEditing(false);
   }
@@ -157,8 +152,58 @@ export function TaskCard({
     onDelete?.(task.id);
   }
 
-  function quickComplete() {
-    onStatusChange?.(task.id, canConfirmTask ? "done" : "review");
+  function renderTeacherActions() {
+    return (
+      <div className="mt-3 flex flex-wrap gap-2">
+        <ActionButton tone="primary" onClick={() => onStatusChange?.(task.id, "doing")} disabled={task.status === "doing" || isTaskClosed(task)}>
+          我已開始處理
+        </ActionButton>
+        <ActionButton tone="warm" onClick={() => onStatusChange?.(task.id, "waiting")} disabled={task.status === "waiting" || isTaskClosed(task)}>
+          我需要協助
+        </ActionButton>
+        <ActionButton tone="quiet" onClick={() => onStatusChange?.(task.id, "review")} disabled={task.status === "review" || isTaskClosed(task)}>
+          送主任確認
+        </ActionButton>
+        <ActionButton tone="quiet" onClick={() => setExpanded((value) => !value)}>
+          回覆留言
+        </ActionButton>
+      </div>
+    );
+  }
+
+  function renderDirectorActions() {
+    return (
+      <div className="mt-3 flex flex-wrap gap-2">
+        <ActionButton tone="primary" onClick={() => setExpanded((value) => !value)}>
+          處理
+        </ActionButton>
+        <ActionButton tone="quiet" onClick={() => onStatusChange?.(task.id, "done")} disabled={task.status === "done" || task.status === "archived"}>
+          確認完成
+        </ActionButton>
+        <select
+          className="rounded-md border border-forest-100 bg-white px-3 py-2 text-base font-black"
+          value={task.ownerIds[0] ?? ""}
+          onChange={(event) => onAssign?.(task.id, event.target.value)}
+          aria-label="改派負責教師"
+        >
+          <option value="">尚未指派</option>
+          {activeTeacherOptions.map((teacher) => (
+            <option key={teacher.id} value={teacher.id}>
+              {teacher.name}
+            </option>
+          ))}
+        </select>
+        <ActionButton tone="warm" onClick={() => onPriorityChange?.(task.id, "high")}>
+          標優先
+        </ActionButton>
+        <ActionButton tone="quiet" onClick={() => onRemind?.(`提醒：${task.title}`)}>
+          催辦
+        </ActionButton>
+        <ActionButton tone="quiet" onClick={() => onStatusChange?.(task.id, "archived")} disabled={task.status === "archived"}>
+          封存
+        </ActionButton>
+      </div>
+    );
   }
 
   return (
@@ -166,7 +211,7 @@ export function TaskCard({
       className={`group rounded-lg border bg-white p-4 shadow-soft ${
         isOverdue ? "border-red-200" : task.priority === "high" ? "border-amber-200" : "border-forest-100"
       } ${task.status === "archived" ? "opacity-70" : ""}`}
-      draggable
+      draggable={canConfirmTask}
       onDragStart={(event) => event.dataTransfer.setData("taskId", task.id)}
     >
       <div className="flex items-start justify-between gap-3">
@@ -180,23 +225,15 @@ export function TaskCard({
           <span className={`rounded-md px-3 py-1 text-base font-black ${statusClass[task.status]}`}>
             {getStatusLabel(task.status)}
           </span>
-          {(onUpdate || onDelete) && (
+          {canConfirmTask && (onUpdate || onDelete) && (
             <div className="flex gap-2">
               {onUpdate && (
-                <button
-                  className="rounded-md bg-forest-50 px-2 py-1 text-sm font-black text-forest-800 hover:bg-forest-100"
-                  onClick={() => setEditing((value) => !value)}
-                  type="button"
-                >
+                <button className="rounded-md bg-forest-50 px-2 py-1 text-sm font-black text-forest-800 hover:bg-forest-100" onClick={() => setEditing((value) => !value)} type="button">
                   編輯
                 </button>
               )}
               {onDelete && (
-                <button
-                  className="rounded-md bg-red-50 px-2 py-1 text-sm font-black text-red-700 hover:bg-red-100"
-                  onClick={confirmDelete}
-                  type="button"
-                >
+                <button className="rounded-md bg-red-50 px-2 py-1 text-sm font-black text-red-700 hover:bg-red-100" onClick={confirmDelete} type="button">
                   刪除
                 </button>
               )}
@@ -218,9 +255,11 @@ export function TaskCard({
         ) : (
           <span className="rounded-md bg-red-50 px-3 py-2 text-base font-black text-red-800">尚未指派</span>
         )}
-        <span className="rounded-md bg-forest-50 px-3 py-2 text-base font-black text-forest-700">
-          {getPriorityLabel(task.priority)}
-        </span>
+        {canConfirmTask && (
+          <span className="rounded-md bg-forest-50 px-3 py-2 text-base font-black text-forest-700">
+            {getPriorityLabel(task.priority)}
+          </span>
+        )}
         <span className={`rounded-md px-3 py-2 text-base font-black ${isOverdue ? "bg-red-50 text-red-700" : daysLeft <= 3 ? "bg-amber-50 text-amber-800" : "bg-forest-50 text-forest-700"}`}>
           {dayText(daysLeft, task.status)}
         </span>
@@ -234,43 +273,16 @@ export function TaskCard({
         )}
       </div>
 
-      {priorityScore !== undefined && (
+      {canConfirmTask && priorityScore !== undefined && (
         <div className="mt-3 rounded-md bg-rice px-3 py-2 text-base font-bold text-stone-700">
           排序原因：{priorityReasons.slice(0, 2).join("、") || "依期限與狀態排序"}
           <span className="ml-2 text-sm text-stone-500">分數 {priorityScore}</span>
         </div>
       )}
 
-      <ActionBar subtle>
-        <ActionButton tone="primary" onClick={() => setExpanded((value) => !value)}>
-          處理
-        </ActionButton>
-        <ActionButton tone="quiet" onClick={quickComplete} disabled={task.status === "done" || task.status === "archived"}>
-          {canConfirmTask ? "確認完成" : "送主任確認"}
-        </ActionButton>
-        <select
-          className="rounded-md border border-forest-100 bg-white px-3 py-2 text-base font-black"
-          value={task.ownerIds[0] ?? ""}
-          onChange={(event) => onAssign?.(task.id, event.target.value)}
-          aria-label="指派負責教師"
-          disabled={!onAssign}
-        >
-          <option value="">尚未指派</option>
-          {activeTeacherOptions.map((teacher) => (
-            <option key={teacher.id} value={teacher.id}>
-              {teacher.name}
-            </option>
-          ))}
-        </select>
-        <ActionButton tone="warm" onClick={() => onPriorityChange?.(task.id, "high")} disabled={!onPriorityChange}>
-          標優先
-        </ActionButton>
-        <ActionButton tone="quiet" onClick={() => onRemind?.(`提醒：${task.title}`)} disabled={!onRemind}>
-          催辦
-        </ActionButton>
-      </ActionBar>
+      {canConfirmTask ? renderDirectorActions() : renderTeacherActions()}
 
-      {editing && (
+      {editing && canConfirmTask && (
         <div className="mt-3 rounded-lg border border-forest-100 bg-warm p-3">
           <div className="grid gap-3">
             <input className="rounded-md border border-forest-100 bg-white px-3 py-2 text-base font-bold" value={draft.title} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} placeholder="任務名稱" />
@@ -304,25 +316,25 @@ export function TaskCard({
 
       {expanded && (
         <div className="mt-3 rounded-lg border border-forest-100 bg-warm p-3">
-          <div className="grid gap-2 md:grid-cols-4">
-            <select className="rounded-md border border-forest-100 bg-white px-3 py-2 text-base font-bold" value={task.status} onChange={(event) => onStatusChange?.(task.id, event.target.value as Task["status"])}>
-              {statusOptions.map((status) => (
-                <option key={status} value={status}>{getStatusLabel(status)}</option>
-              ))}
-            </select>
-            <select className="rounded-md border border-forest-100 bg-white px-3 py-2 text-base font-bold" value={task.priority} onChange={(event) => onPriorityChange?.(task.id, event.target.value as Task["priority"])} disabled={!onPriorityChange}>
-              <option value="high">優先</option>
-              <option value="normal">一般</option>
-              <option value="low">低</option>
-            </select>
-            <input className="rounded-md border border-forest-100 bg-white px-3 py-2 text-base font-bold" type="date" value={task.dueDate} onChange={(event) => onDueDateChange?.(task.id, event.target.value)} disabled={!onDueDateChange} />
-            <ActionButton tone="primary" onClick={() => onStatusChange?.(task.id, "doing")}>
-              改為進行中
-            </ActionButton>
-          </div>
+          {canConfirmTask && (
+            <div className="mb-3 grid gap-2 md:grid-cols-4">
+              <select className="rounded-md border border-forest-100 bg-white px-3 py-2 text-base font-bold" value={task.status} onChange={(event) => onStatusChange?.(task.id, event.target.value as Task["status"])}>
+                {statusOptions.map((status) => (
+                  <option key={status} value={status}>{getStatusLabel(status)}</option>
+                ))}
+              </select>
+              <select className="rounded-md border border-forest-100 bg-white px-3 py-2 text-base font-bold" value={task.priority} onChange={(event) => onPriorityChange?.(task.id, event.target.value as Task["priority"])}>
+                <option value="high">優先</option>
+                <option value="normal">一般</option>
+                <option value="low">低</option>
+              </select>
+              <input className="rounded-md border border-forest-100 bg-white px-3 py-2 text-base font-bold" type="date" value={task.dueDate} onChange={(event) => onDueDateChange?.(task.id, event.target.value)} />
+              <ActionButton tone="primary" onClick={() => onStatusChange?.(task.id, "doing")}>改為進行中</ActionButton>
+            </div>
+          )}
 
-          <div className="mt-3 flex gap-2">
-            <input className="min-w-0 flex-1 rounded-md border border-forest-100 bg-white px-3 py-2 text-base font-bold" value={comment} onChange={(event) => setComment(event.target.value)} placeholder="快速留言，例如：已聯絡負責人" />
+          <div className="flex gap-2">
+            <input className="min-w-0 flex-1 rounded-md border border-forest-100 bg-white px-3 py-2 text-base font-bold" value={comment} onChange={(event) => setComment(event.target.value)} placeholder="回覆留言，例如：已聯絡負責人" />
             <ActionButton tone="primary" onClick={submitComment}>留言</ActionButton>
           </div>
 
@@ -330,7 +342,7 @@ export function TaskCard({
             <p className="text-base font-black text-forest-700">留言紀錄</p>
             {task.comments.length ? (
               <div className="mt-2 space-y-2">
-                {task.comments.slice().reverse().map((item) => {
+                {task.comments.slice().reverse().map((item: Comment) => {
                   const editable = canEditComment(item);
                   return (
                     <div key={item.id} className="rounded-md bg-rice px-3 py-2">
@@ -349,7 +361,10 @@ export function TaskCard({
                             <p className="text-sm font-bold text-stone-600">{commentAuthorName(item.authorId, teachers)} / {item.createdAt}</p>
                             {editable && (
                               <div className="flex gap-2">
-                                <button className="rounded-md bg-white px-2 py-1 text-sm font-black text-forest-800 hover:bg-forest-50" type="button" onClick={() => startEditComment(item)}>編輯</button>
+                                <button className="rounded-md bg-white px-2 py-1 text-sm font-black text-forest-800 hover:bg-forest-50" type="button" onClick={() => {
+                                  setEditingCommentId(item.id);
+                                  setEditingCommentBody(item.body);
+                                }}>編輯</button>
                                 <button className="rounded-md bg-red-50 px-2 py-1 text-sm font-black text-red-700 hover:bg-red-100" type="button" onClick={() => confirmDeleteComment(item.id)}>刪除</button>
                               </div>
                             )}

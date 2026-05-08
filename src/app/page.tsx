@@ -32,16 +32,17 @@ import type { Priority, StickyColor } from "@/lib/types";
 
 const navItems = [
   ["工作總覽", "dashboard"],
-  ["快速新增", "quick-create"],
+  ["任務與活動新增", "quick-create"],
   ["活動時間軸", "timeline"],
   ["任務看板", "kanban"],
   ["人員分工", "workload"],
-  ["共筆便利貼", "sticky"],
+  ["交流便利貼", "sticky"],
   ["提醒中心", "dashboard"],
   ["活動模板", "templates"],
   ["教師端預覽", "teacher"],
   ["活動資料庫", "archive"],
-  ["系統設定", "settings"]
+  ["系統設定", "settings"],
+  ["資料結構", "architecture"]
 ];
 
 const TASKS_STORAGE_KEY = "jiao-dao-task-map:tasks:v1";
@@ -365,6 +366,7 @@ export default function Home() {
   const [events, setEvents] = useState<Event[]>(initialEvents);
   const [teachers, setTeachers] = useState<Teacher[]>(initialTeachers);
   const [currentMode, setCurrentMode] = useState<"director" | "teacher">("director");
+  const [currentSection, setCurrentSection] = useState("dashboard");
   const [activeTeacherId, setActiveTeacherId] = useState("");
   const [filter, setFilter] = useState("all");
   const [selectedTaskId, setSelectedTaskId] = useState(initialTasks[0]?.id ?? "");
@@ -1338,6 +1340,7 @@ export default function Home() {
               <a
                 key={label}
                 href={`#${target}`}
+                onClick={() => setCurrentSection(target)}
                 className="block rounded-md px-4 py-3 text-xl font-bold text-forest-50 hover:bg-forest-700"
               >
                 {label}
@@ -1440,78 +1443,89 @@ export default function Home() {
               )
             ) : (
               <>
-                <Dashboard
-                  tasks={tasks}
-                  teachers={visibleTeachers}
-                  events={events}
-                  notes={notes}
-                  filter={filter}
-                  actionMessage={actionMessage}
-                  currentUserId={currentUser.id}
-                  onFilterChange={setFilter}
-                  onStatusChange={handleStatusChange}
-                  onPriorityChange={handlePriorityChange}
-                  onAssign={handleAssign}
-                  onOpenTask={setSelectedTaskId}
-                  onRemind={handleRemind}
-                  onBalanceTasks={handleBalanceTasks}
-                  onDeferTask={handleDeferTask}
-                  onCreateNote={handleCreateNote}
-                />
-
-                <QuickCreatePanel
-                  teachers={visibleTeachers}
-                  templates={savedEventTemplates}
-                  onCreateTask={handleCreateTask}
-                  onCreateNote={handleCreateNote}
-                  onCreateEvent={handleCreateEvent}
-                />
-
-                {selectedTask && (
-                  <section className="rounded-lg border border-forest-100 bg-white p-5 shadow-soft">
-                    <p className="text-xl font-bold text-forest-700">目前開啟的任務卡</p>
-                    <h2 className="text-3xl font-black">{selectedTask.title}</h2>
-                    <p className="mt-2 text-lg font-bold text-stone-700">{selectedTask.description}</p>
-                  </section>
+                {currentSection === "dashboard" && (
+                  <Dashboard
+                    tasks={tasks}
+                    teachers={visibleTeachers}
+                    events={events}
+                    notes={notes}
+                    filter={filter}
+                    actionMessage={actionMessage}
+                    currentUserId={currentUser.id}
+                    onFilterChange={setFilter}
+                    onStatusChange={handleStatusChange}
+                    onPriorityChange={handlePriorityChange}
+                    onAssign={handleAssign}
+                    onOpenTask={setSelectedTaskId}
+                    onCreateNote={handleCreateNote}
+                  />
                 )}
 
-                <Timeline events={events} tasks={tasks} />
-                <KanbanBoard
-                  tasks={visibleTasks}
-                  teachers={visibleTeachers}
-                  currentUserId={currentUser.id}
-                  editableCommentAuthorIds={[currentUser.id]}
-                  canManageComments={currentUser.role === "admin"}
-                  canConfirmTask={currentUser.role === "admin"}
-                  onStatusChange={handleStatusChange}
-                  onPriorityChange={handlePriorityChange}
-                  onAssign={handleAssign}
-                  onDueDateChange={handleDueDateChange}
-                  onQuickComment={handleQuickComment}
-                  onUpdateComment={handleUpdateComment}
-                  onDeleteComment={handleDeleteComment}
-                  onRemind={handleRemind}
-                  onUpdateTask={handleUpdateTask}
-                  onDeleteTask={handleDeleteTask}
-                  onOpenTask={setSelectedTaskId}
-                />
-                <WorkloadPanel teachers={visibleTeachers} tasks={tasks} />
-                <StickyWall
-                  notes={notes}
-                  teachers={visibleTeachers}
-                  currentUserId={currentUser.id}
-                  canManageAll={currentUser.role === "admin"}
-                  onToggle={handleStickyToggle}
-                  onConvert={handleConvertSticky}
-                  onAssign={handleStickyAssign}
-                  onCreate={handleCreateNote}
-                  onUpdate={handleUpdateSticky}
-                  onDelete={handleDeleteSticky}
-                  onSetStatus={handleSetStickyStatus}
-                  onOpenTask={setSelectedTaskId}
-                />
-                <TemplatePanel />
-                {activeTeacher && (
+                {currentSection === "quick-create" && (
+                  <QuickCreatePanel
+                    teachers={visibleTeachers}
+                    templates={savedEventTemplates}
+                    onCreateTask={handleCreateTask}
+                    onCreateNote={handleCreateNote}
+                    onCreateEvent={handleCreateEvent}
+                  />
+                )}
+
+                {currentSection === "timeline" && <Timeline events={events} tasks={tasks} />}
+
+                {currentSection === "kanban" && (
+                  <>
+                    {selectedTask && (
+                      <section className="rounded-lg border border-forest-100 bg-white p-5 shadow-soft">
+                        <p className="text-xl font-bold text-forest-700">目前開啟的任務卡</p>
+                        <h2 className="text-3xl font-black">{selectedTask.title}</h2>
+                        <p className="mt-2 text-lg font-bold text-stone-700">{selectedTask.description}</p>
+                      </section>
+                    )}
+                    <KanbanBoard
+                      tasks={visibleTasks}
+                      teachers={visibleTeachers}
+                      currentUserId={currentUser.id}
+                      editableCommentAuthorIds={[currentUser.id]}
+                      canManageComments={currentUser.role === "admin"}
+                      canConfirmTask={currentUser.role === "admin"}
+                      onStatusChange={handleStatusChange}
+                      onPriorityChange={handlePriorityChange}
+                      onAssign={handleAssign}
+                      onDueDateChange={handleDueDateChange}
+                      onQuickComment={handleQuickComment}
+                      onUpdateComment={handleUpdateComment}
+                      onDeleteComment={handleDeleteComment}
+                      onRemind={handleRemind}
+                      onUpdateTask={handleUpdateTask}
+                      onDeleteTask={handleDeleteTask}
+                      onOpenTask={setSelectedTaskId}
+                    />
+                  </>
+                )}
+
+                {currentSection === "workload" && <WorkloadPanel teachers={visibleTeachers} tasks={tasks} />}
+
+                {currentSection === "sticky" && (
+                  <StickyWall
+                    notes={notes}
+                    teachers={visibleTeachers}
+                    currentUserId={currentUser.id}
+                    canManageAll={currentUser.role === "admin"}
+                    onToggle={handleStickyToggle}
+                    onConvert={handleConvertSticky}
+                    onAssign={handleStickyAssign}
+                    onCreate={handleCreateNote}
+                    onUpdate={handleUpdateSticky}
+                    onDelete={handleDeleteSticky}
+                    onSetStatus={handleSetStickyStatus}
+                    onOpenTask={setSelectedTaskId}
+                  />
+                )}
+
+                {currentSection === "templates" && <TemplatePanel />}
+
+                {currentSection === "teacher" && activeTeacher && (
                   <TeacherHome
                     teacher={activeTeacher}
                     tasks={tasks}
@@ -1519,22 +1533,36 @@ export default function Home() {
                     onStatusChange={handleStatusChange}
                   />
                 )}
-                <ActivityDatabase
-                  events={events}
-                  tasks={tasks}
-                  teachers={visibleTeachers}
-                  onAddReviewNote={handleAddReviewNote}
-                  onDuplicateEvent={handleDuplicateEvent}
-                  onFilterEvent={(eventId) => setFilter(`event:${eventId}`)}
-                />
-                <TeacherManagement
-                  teachers={visibleTeachers}
-                  tasks={tasks}
-                  onCreateTeacher={handleCreateTeacher}
-                  onUpdateTeacher={handleUpdateTeacher}
-                  onDeleteTeacher={handleDeleteTeacher}
-                />
-                <ArchitecturePanel />
+
+                {currentSection === "teacher" && !activeTeacher && (
+                  <section className="rounded-lg bg-white p-5 shadow-soft">
+                    <p className="text-xl font-black text-forest-700">教師端預覽</p>
+                    <h2 className="mt-1 text-4xl font-black text-ink">尚未建立教師資料</h2>
+                  </section>
+                )}
+
+                {currentSection === "archive" && (
+                  <ActivityDatabase
+                    events={events}
+                    tasks={tasks}
+                    teachers={visibleTeachers}
+                    onAddReviewNote={handleAddReviewNote}
+                    onDuplicateEvent={handleDuplicateEvent}
+                    onFilterEvent={(eventId) => setFilter(`event:${eventId}`)}
+                  />
+                )}
+
+                {currentSection === "settings" && (
+                  <TeacherManagement
+                    teachers={visibleTeachers}
+                    tasks={tasks}
+                    onCreateTeacher={handleCreateTeacher}
+                    onUpdateTeacher={handleUpdateTeacher}
+                    onDeleteTeacher={handleDeleteTeacher}
+                  />
+                )}
+
+                {currentSection === "architecture" && <ArchitecturePanel />}
               </>
             )}
           </div>
