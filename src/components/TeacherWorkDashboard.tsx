@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Event, StickyNote, Task, Teacher } from "@/lib/types";
 import { getAssigneeIds, getPriorityLabel, getStatusLabel } from "@/lib/decisionSupport";
 import { getDaysLeft, isTaskClosed } from "@/lib/reminders";
@@ -20,7 +20,18 @@ type TeacherWorkDashboardProps = {
 
 type FilterKey = "all" | "todo" | "doing" | "done" | "overdue";
 
+type PersonalTodo = {
+  id: string;
+  title: string;
+  note: string;
+  dueDate?: string;
+  status: "todo" | "done";
+  createdAt: string;
+  updatedAt: string;
+};
+
 const allRecipientId = "__all__";
+const personalTodoStoragePrefix = "jiao-dao-task-map:personal-todos:v1:";
 
 const text = {
   kicker: "\u6211\u7684\u5de5\u4f5c\u3001\u4f4e\u58d3\u63d0\u9192\u3001\u72c0\u614b\u56de\u5831",
@@ -69,6 +80,27 @@ const text = {
   supportOff: "\u76ee\u524d\u4e0d\u9700\u8981\u5354\u52a9",
   completedPrefix: "\u5b8c\u6210",
   totalPrefix: "\u7e3d\u4efb\u52d9"
+};
+
+const todoText = {
+  title: "\u6211\u7684\u4ee3\u8fa6\u4e8b\u9805",
+  hint: "\u9019\u662f\u4f60\u81ea\u5df1\u7684\u5c0f\u63d0\u9192\uff0c\u4e0d\u6703\u9032\u5165\u4e3b\u4efb\u7684\u6b63\u5f0f\u4efb\u52d9\u770b\u677f\u3002",
+  newTitle: "\u4ee3\u8fa6\u6a19\u984c",
+  note: "\u5099\u8a3b",
+  dueDate: "\u622a\u6b62\u65e5\uff08\u53ef\u9078\uff09",
+  add: "\u65b0\u589e\u4ee3\u8fa6",
+  save: "\u5132\u5b58",
+  cancel: "\u53d6\u6d88",
+  edit: "\u7de8\u8f2f",
+  remove: "\u522a\u9664",
+  complete: "\u6a19\u8a18\u5b8c\u6210",
+  reopen: "\u6539\u56de\u5f85\u8655\u7406",
+  pending: "\u5f85\u8655\u7406",
+  done: "\u5df2\u5b8c\u6210",
+  doneRecord: "\u5df2\u5b8c\u6210\u7d00\u9304",
+  noPending: "\u76ee\u524d\u6c92\u6709\u500b\u4eba\u4ee3\u8fa6\u3002",
+  noDone: "\u5b8c\u6210\u5f8c\u6703\u7559\u5728\u9019\u88e1\uff0c\u4e0d\u6703\u5f71\u97ff\u6b63\u5f0f\u884c\u653f\u4efb\u52d9\u3002",
+  confirmDelete: "\u78ba\u5b9a\u8981\u522a\u9664\u9019\u500b\u4ee3\u8fa6\u4e8b\u9805\u55ce\uff1f"
 };
 
 function isAssignedToTeacher(task: Task, teacherIds: string[]) {
@@ -126,8 +158,17 @@ export function TeacherWorkDashboard({
   const [selectedTaskId, setSelectedTaskId] = useState("");
   const [progressNote, setProgressNote] = useState("");
   const [comment, setComment] = useState("");
+  const [personalTodos, setPersonalTodos] = useState<PersonalTodo[]>([]);
+  const [todoTitle, setTodoTitle] = useState("");
+  const [todoNote, setTodoNote] = useState("");
+  const [todoDueDate, setTodoDueDate] = useState("");
+  const [editingTodoId, setEditingTodoId] = useState("");
+  const [editTodoTitle, setEditTodoTitle] = useState("");
+  const [editTodoNote, setEditTodoNote] = useState("");
+  const [editTodoDueDate, setEditTodoDueDate] = useState("");
 
   const identityIds = teacherIds.length ? teacherIds : [teacher.id];
+  const personalTodoStorageKey = `${personalTodoStoragePrefix}${identityIds[0] ?? teacher.id}`;
   const myTasks = useMemo(
     () => tasks.filter((task) => isAssignedToTeacher(task, identityIds) && task.status !== "archived"),
     [identityIds, tasks]
@@ -183,6 +224,87 @@ export function TeacherWorkDashboard({
   ]
     .sort((a, b) => b.time.localeCompare(a.time))
     .slice(0, 8);
+  const pendingTodos = personalTodos
+    .filter((todo) => todo.status === "todo")
+    .sort((a, b) => (a.dueDate || "9999-12-31").localeCompare(b.dueDate || "9999-12-31"));
+  const doneTodos = personalTodos
+    .filter((todo) => todo.status === "done")
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(personalTodoStorageKey);
+      const parsed = raw ? (JSON.parse(raw) as PersonalTodo[]) : [];
+      setPersonalTodos(Array.isArray(parsed) ? parsed : []);
+    } catch {
+      setPersonalTodos([]);
+    }
+  }, [personalTodoStorageKey]);
+
+  function savePersonalTodos(nextTodos: PersonalTodo[]) {
+    setPersonalTodos(nextTodos);
+    try {
+      window.localStorage.setItem(personalTodoStorageKey, JSON.stringify(nextTodos));
+    } catch {
+      // Personal todos are intentionally local-only. Ignore storage failures quietly.
+    }
+  }
+
+  function addPersonalTodo() {
+    const title = todoTitle.trim();
+    if (!title) return;
+    const today = new Date().toLocaleDateString("sv-SE");
+    const newTodo: PersonalTodo = {
+      id: `personal-todo-${Date.now()}`,
+      title,
+      note: todoNote.trim(),
+      dueDate: todoDueDate || undefined,
+      status: "todo",
+      createdAt: today,
+      updatedAt: today
+    };
+    savePersonalTodos([newTodo, ...personalTodos]);
+    setTodoTitle("");
+    setTodoNote("");
+    setTodoDueDate("");
+  }
+
+  function startEditTodo(todo: PersonalTodo) {
+    setEditingTodoId(todo.id);
+    setEditTodoTitle(todo.title);
+    setEditTodoNote(todo.note);
+    setEditTodoDueDate(todo.dueDate ?? "");
+  }
+
+  function saveTodoEdit(todoId: string) {
+    const title = editTodoTitle.trim();
+    if (!title) return;
+    const today = new Date().toLocaleDateString("sv-SE");
+    savePersonalTodos(
+      personalTodos.map((todo) =>
+        todo.id === todoId
+          ? { ...todo, title, note: editTodoNote.trim(), dueDate: editTodoDueDate || undefined, updatedAt: today }
+          : todo
+      )
+    );
+    setEditingTodoId("");
+  }
+
+  function toggleTodoDone(todoId: string) {
+    const today = new Date().toLocaleDateString("sv-SE");
+    savePersonalTodos(
+      personalTodos.map((todo) =>
+        todo.id === todoId
+          ? { ...todo, status: todo.status === "done" ? "todo" : "done", updatedAt: today }
+          : todo
+      )
+    );
+  }
+
+  function deletePersonalTodo(todoId: string) {
+    if (!window.confirm(todoText.confirmDelete)) return;
+    savePersonalTodos(personalTodos.filter((todo) => todo.id !== todoId));
+  }
 
   function openTask(task: Task) {
     setSelectedTaskId(task.id);
@@ -233,6 +355,71 @@ export function TeacherWorkDashboard({
     );
   }
 
+  function renderPersonalTodo(todo: PersonalTodo) {
+    const isEditing = editingTodoId === todo.id;
+
+    return (
+      <article key={todo.id} className="rounded-lg border border-blue-100 bg-blue-50 p-4">
+        {isEditing ? (
+          <div className="grid gap-2">
+            <input
+              className="rounded-md border border-blue-100 bg-white px-3 py-2 text-base font-bold"
+              value={editTodoTitle}
+              onChange={(event) => setEditTodoTitle(event.target.value)}
+            />
+            <textarea
+              className="min-h-20 rounded-md border border-blue-100 bg-white px-3 py-2 text-base font-bold"
+              value={editTodoNote}
+              onChange={(event) => setEditTodoNote(event.target.value)}
+            />
+            <input
+              className="rounded-md border border-blue-100 bg-white px-3 py-2 text-base font-bold"
+              type="date"
+              value={editTodoDueDate}
+              onChange={(event) => setEditTodoDueDate(event.target.value)}
+            />
+            <div className="flex flex-wrap gap-2">
+              <button className="rounded-md bg-blue-700 px-3 py-2 text-base font-black text-white" type="button" onClick={() => saveTodoEdit(todo.id)}>
+                {todoText.save}
+              </button>
+              <button className="rounded-md bg-white px-3 py-2 text-base font-black text-ink" type="button" onClick={() => setEditingTodoId("")}>
+                {todoText.cancel}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h4 className="text-xl font-black text-ink">{todo.title}</h4>
+                  <span className={`rounded-md px-3 py-1 text-sm font-black ${todo.status === "done" ? "bg-stone-100 text-stone-600" : "bg-white text-blue-800"}`}>
+                    {todo.status === "done" ? todoText.done : todoText.pending}
+                  </span>
+                </div>
+                {todo.note && <p className="mt-2 text-base font-bold leading-relaxed text-stone-700">{todo.note}</p>}
+                <p className="mt-2 text-sm font-bold text-stone-600">
+                  {todo.dueDate ? `${todoText.dueDate}: ${todo.dueDate}` : todoText.dueDate}
+                </p>
+              </div>
+              <div className="flex shrink-0 flex-wrap gap-2">
+                <button className="rounded-md bg-white px-3 py-2 text-sm font-black text-blue-800" type="button" onClick={() => toggleTodoDone(todo.id)}>
+                  {todo.status === "done" ? todoText.reopen : todoText.complete}
+                </button>
+                <button className="rounded-md bg-white px-3 py-2 text-sm font-black text-ink" type="button" onClick={() => startEditTodo(todo)}>
+                  {todoText.edit}
+                </button>
+                <button className="rounded-md bg-red-50 px-3 py-2 text-sm font-black text-red-700" type="button" onClick={() => deletePersonalTodo(todo.id)}>
+                  {todoText.remove}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </article>
+    );
+  }
+
   return (
     <div className="space-y-6" id="teacher-dashboard">
       <section className="rounded-lg bg-white p-5 shadow-soft">
@@ -244,11 +431,63 @@ export function TeacherWorkDashboard({
       </section>
 
       <section className="grid items-start gap-5 xl:grid-cols-[1.1fr_.9fr]">
-        <div className="rounded-lg bg-white p-5 shadow-soft">
-          <h3 className="text-4xl font-black text-ink">{text.todayTasks}</h3>
-          <p className="mt-1 text-lg font-bold text-stone-700">{text.todayHint}</p>
-          <div className="mt-4 grid gap-3">
-            {todayTasks.length ? todayTasks.map(renderTaskCard) : <p className="rounded-lg bg-rice p-5 text-xl font-black text-forest-800">{text.noToday}</p>}
+        <div className="space-y-5">
+          <div className="rounded-lg bg-white p-5 shadow-soft">
+            <h3 className="text-4xl font-black text-ink">{text.todayTasks}</h3>
+            <p className="mt-1 text-lg font-bold text-stone-700">{text.todayHint}</p>
+            <div className="mt-4 grid gap-3">
+              {todayTasks.length ? todayTasks.map(renderTaskCard) : <p className="rounded-lg bg-rice p-5 text-xl font-black text-forest-800">{text.noToday}</p>}
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-blue-100 bg-white p-5 shadow-soft">
+            <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-start">
+              <div>
+                <p className="text-xl font-bold text-blue-700">{todoText.hint}</p>
+                <h3 className="mt-1 text-4xl font-black text-ink">{todoText.title}</h3>
+              </div>
+              <span className="rounded-md bg-blue-50 px-3 py-2 text-base font-black text-blue-800">
+                {pendingTodos.length} {todoText.pending}
+              </span>
+            </div>
+
+            <div className="mt-4 grid gap-2 rounded-lg bg-blue-50 p-3">
+              <input
+                className="rounded-md border border-blue-100 bg-white px-3 py-3 text-base font-bold"
+                value={todoTitle}
+                onChange={(event) => setTodoTitle(event.target.value)}
+                placeholder={todoText.newTitle}
+              />
+              <textarea
+                className="min-h-20 rounded-md border border-blue-100 bg-white px-3 py-3 text-base font-bold"
+                value={todoNote}
+                onChange={(event) => setTodoNote(event.target.value)}
+                placeholder={todoText.note}
+              />
+              <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                <input
+                  className="rounded-md border border-blue-100 bg-white px-3 py-3 text-base font-bold"
+                  type="date"
+                  value={todoDueDate}
+                  onChange={(event) => setTodoDueDate(event.target.value)}
+                  aria-label={todoText.dueDate}
+                />
+                <button className="rounded-md bg-blue-700 px-5 py-3 text-base font-black text-white" type="button" onClick={addPersonalTodo}>
+                  {todoText.add}
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3">
+              {pendingTodos.length ? pendingTodos.map(renderPersonalTodo) : <p className="rounded-lg bg-blue-50 p-4 text-lg font-black text-blue-800">{todoText.noPending}</p>}
+            </div>
+
+            <div className="mt-5">
+              <h4 className="text-2xl font-black text-ink">{todoText.doneRecord}</h4>
+              <div className="mt-3 grid gap-3">
+                {doneTodos.length ? doneTodos.map(renderPersonalTodo) : <p className="rounded-lg bg-stone-50 p-4 text-lg font-black text-stone-700">{todoText.noDone}</p>}
+              </div>
+            </div>
           </div>
         </div>
 
