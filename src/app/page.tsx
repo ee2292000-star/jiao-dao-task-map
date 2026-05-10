@@ -5,13 +5,13 @@ import { signOut, useSession } from "next-auth/react";
 import { ArchitecturePanel } from "@/components/ArchitecturePanel";
 import { ActivityDatabase } from "@/components/ActivityDatabase";
 import { CommandBar } from "@/components/CommandBar";
-import { Dashboard } from "@/components/Dashboard";
+import { AdminTaskMap } from "@/components/AdminTaskMap";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import { QuickCreatePanel } from "@/components/QuickCreatePanel";
 import { StickyWall } from "@/components/StickyWall";
 import { TeacherHome } from "@/components/TeacherHome";
 import { TeacherManagement } from "@/components/TeacherManagement";
-import { TeacherPortal } from "@/components/TeacherPortal";
+import { TeacherWorkDashboard } from "@/components/TeacherWorkDashboard";
 import { TemplatePanel } from "@/components/TemplatePanel";
 import { Timeline } from "@/components/Timeline";
 import { WorkloadPanel } from "@/components/WorkloadPanel";
@@ -155,6 +155,8 @@ function normalizeTask(task: Partial<Task>): Task {
     assignees,
     ownerIds,
     assignedTo: task.assignedTo ?? ownerIds[0] ?? assignees[0],
+    assigneeId: task.assigneeId ?? task.assignedTo ?? ownerIds[0] ?? assignees[0],
+    assigneeName: task.assigneeName,
     eventId: task.eventId,
     status: task.status ?? "todo",
     priority: task.priority ?? "normal",
@@ -163,8 +165,16 @@ function normalizeTask(task: Partial<Task>): Task {
     isKeyTask: task.isKeyTask ?? task.isCritical ?? false,
     dueDate: task.dueDate ?? addDaysString(6),
     startDate: task.startDate,
+    taskType: task.taskType ?? "行政任務",
+    sourceType: task.sourceType ?? (task.eventId ? "activity" : "manual"),
+    sourceId: task.sourceId ?? task.eventId,
+    activityName: task.activityName,
+    directorNote: task.directorNote ?? "",
+    teacherProgressNote: task.teacherProgressNote ?? "",
+    needsSupport: task.needsSupport ?? false,
     createdAt: task.createdAt ?? getTodayString(),
     updatedAt: task.updatedAt ?? getTodayString(),
+    completedAt: task.completedAt,
     comments: task.comments ?? [],
     attachments: task.attachments ?? []
   };
@@ -599,7 +609,14 @@ export default function Home() {
   function handleStatusChange(taskId: string, status: Task["status"]) {
     setTasks((current) =>
       current.map((task) =>
-        task.id === taskId ? { ...task, status, updatedAt: getTodayString() } : task
+        task.id === taskId
+          ? {
+              ...task,
+              status,
+              updatedAt: getTodayString(),
+              completedAt: status === "done" ? getTodayString() : task.completedAt
+            }
+          : task
       )
     );
   }
@@ -621,6 +638,8 @@ export default function Home() {
               assignees: ownerId ? [ownerId] : [],
               ownerIds: ownerId ? [ownerId] : [],
               assignedTo: ownerId || undefined,
+              assigneeId: ownerId || undefined,
+              assigneeName: visibleTeachers.find((teacher) => teacher.id === ownerId)?.name,
               updatedAt: getTodayString()
             }
           : task
@@ -648,6 +667,8 @@ export default function Home() {
               assignees: changes.assignees ?? changes.ownerIds ?? task.assignees,
               ownerIds: changes.ownerIds ?? changes.assignees ?? task.ownerIds,
               assignedTo: changes.assignedTo ?? changes.ownerIds?.[0] ?? changes.assignees?.[0] ?? task.assignedTo,
+              assigneeId: changes.assigneeId ?? changes.assignedTo ?? changes.ownerIds?.[0] ?? changes.assignees?.[0] ?? task.assigneeId,
+              completedAt: changes.status === "done" ? getTodayString() : changes.completedAt ?? task.completedAt,
               updatedAt: getTodayString()
             }
           : task
@@ -1019,11 +1040,19 @@ export default function Home() {
       assignees: noteOwnerIds,
       ownerIds: noteOwnerIds,
       assignedTo: noteOwnerIds[0],
+      assigneeId: noteOwnerIds[0],
+      assigneeName: visibleTeachers.find((teacher) => teacher.id === noteOwnerIds[0])?.name,
       eventId: note.eventId,
       status: "todo",
       priority: options.priority,
       isCritical: false,
       isBlocked: false,
+      taskType: options.taskType || "便利貼轉任務",
+      sourceType: "sticky",
+      sourceId: note.id,
+      directorNote: note.body,
+      teacherProgressNote: "",
+      needsSupport: false,
       dueDate: options.dueDate || note.dueDate || addDaysString(6),
       createdAt: getTodayString(),
       updatedAt: getTodayString(),
@@ -1068,11 +1097,18 @@ export default function Home() {
       assignees: input.assigneeId ? [input.assigneeId] : [],
       ownerIds: input.assigneeId ? [input.assigneeId] : [],
       assignedTo: input.assigneeId || undefined,
+      assigneeId: input.assigneeId || undefined,
+      assigneeName: visibleTeachers.find((teacher) => teacher.id === input.assigneeId)?.name,
       status: "todo",
       priority: input.priority,
       isCritical: input.isCritical,
       isBlocked: false,
       isKeyTask: input.isCritical,
+      taskType: "行政任務",
+      sourceType: "manual",
+      directorNote: "",
+      teacherProgressNote: "",
+      needsSupport: false,
       dueDate: input.dueDate,
       createdAt: getTodayString(),
       updatedAt: getTodayString(),
@@ -1161,6 +1197,13 @@ export default function Home() {
     }).map((task) => ({
       ...task,
       status: "todo" as const,
+      taskType: "活動任務",
+      sourceType: "template" as const,
+      sourceId: eventId,
+      activityName: input.name,
+      directorNote: "",
+      teacherProgressNote: "",
+      needsSupport: false,
       createdAt: getTodayString(),
       updatedAt: getTodayString()
     }));
@@ -1228,6 +1271,11 @@ export default function Home() {
         assignees: [],
         ownerIds: [],
         assignedTo: undefined,
+        assigneeId: undefined,
+        assigneeName: undefined,
+        teacherProgressNote: "",
+        needsSupport: false,
+        completedAt: undefined,
         isBlocked: false,
         dueDate: nextDue.toISOString().slice(0, 10),
         createdAt: getTodayString(),
@@ -1410,27 +1458,17 @@ export default function Home() {
           <div className="space-y-6">
             {effectiveMode === "teacher" ? (
               activeTeacher ? (
-                <TeacherPortal
+                <TeacherWorkDashboard
                   teacher={activeTeacher}
                   teacherIds={currentUser.role === "teacher" ? currentTeacherIds : [activeTeacher.id]}
-                  currentUserId={currentUser.role === "teacher" ? activeTeacher.id : currentUser.id}
-                  editableCommentAuthorIds={
-                    currentUser.role === "teacher"
-                      ? Array.from(new Set([currentUser.id, activeTeacher.id, ...currentTeacherIds]))
-                      : [currentUser.id]
-                  }
+                  currentUserId={currentUser.id}
                   tasks={permittedTasks}
                   notes={notes}
                   teachers={visibleTeachers}
+                  events={events}
                   onStatusChange={handleStatusChange}
+                  onUpdateTask={handleUpdateTask}
                   onQuickComment={handleQuickComment}
-                  onUpdateComment={handleUpdateComment}
-                  onDeleteComment={handleDeleteComment}
-                  onToggleNote={handleStickyToggle}
-                  onCreateNote={handleCreateNote}
-                  onUpdateNote={handleUpdateSticky}
-                  onDeleteNote={handleDeleteSticky}
-                  onSetNoteStatus={handleSetStickyStatus}
                 />
               ) : (
                 <section className="rounded-lg bg-white p-5 shadow-soft">
@@ -1444,18 +1482,15 @@ export default function Home() {
             ) : (
               <>
                 {currentSection === "dashboard" && (
-                  <Dashboard
+                  <AdminTaskMap
                     tasks={tasks}
                     teachers={visibleTeachers}
                     events={events}
                     notes={notes}
-                    filter={filter}
                     actionMessage={actionMessage}
                     currentUserId={currentUser.id}
-                    onFilterChange={setFilter}
                     onStatusChange={handleStatusChange}
                     onPriorityChange={handlePriorityChange}
-                    onAssign={handleAssign}
                     onOpenTask={setSelectedTaskId}
                     onNavigate={setCurrentSection}
                     onCreateNote={handleCreateNote}

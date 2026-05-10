@@ -61,6 +61,8 @@ export type Task = {
   assignees: string[];
   ownerIds: string[];
   assignedTo?: string;
+  assigneeId?: string;
+  assigneeName?: string;
   eventId?: string;
   status: TaskStatus;
   priority: Priority;
@@ -69,8 +71,16 @@ export type Task = {
   isKeyTask?: boolean;
   dueDate: string;
   startDate?: string;
+  taskType?: string;
+  sourceType?: "manual" | "template" | "sticky" | "activity";
+  sourceId?: string;
+  activityName?: string;
+  directorNote?: string;
+  teacherProgressNote?: string;
+  needsSupport?: boolean;
   createdAt: string;
   updatedAt: string;
+  completedAt?: string;
   comments: Comment[];
   attachments: Attachment[];
 };
