@@ -1,6 +1,7 @@
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 
-export type IdeaColor = "yellow" | "blue" | "green" | "pink" | "orange";
+export type IdeaColor = "yellow" | "pink" | "blue" | "green" | "purple";
+export type IdeaVisibility = "all" | "director" | "teachers";
 
 export type IdeaComment = {
   id: string;
@@ -17,6 +18,11 @@ export type IdeaNote = {
   authorId: string;
   authorName: string;
   color: IdeaColor;
+  x: number;
+  y: number;
+  rotation: number;
+  visibility: IdeaVisibility;
+  targetTeacherIds: string[];
   supportUserIds: string[];
   comments: IdeaComment[];
   pinned: boolean;
@@ -37,6 +43,11 @@ type IdeaNoteRow = {
   author_id: string;
   author_name: string;
   color: IdeaColor;
+  x: number | null;
+  y: number | null;
+  rotation: number | null;
+  visibility: IdeaVisibility | null;
+  target_teacher_ids: string[] | null;
   support_user_ids: string[] | null;
   comments: IdeaComment[] | null;
   pinned: boolean | null;
@@ -72,7 +83,12 @@ function fromIdeaRow(row: IdeaNoteRow): IdeaNote {
     body: row.body,
     authorId: row.author_id,
     authorName: row.author_name,
-    color: row.color,
+    color: row.color ?? "yellow",
+    x: row.x ?? 80,
+    y: row.y ?? 80,
+    rotation: row.rotation ?? 0,
+    visibility: row.visibility ?? "all",
+    targetTeacherIds: row.target_teacher_ids ?? [],
     supportUserIds: row.support_user_ids ?? [],
     comments: row.comments ?? [],
     pinned: Boolean(row.pinned),
@@ -90,6 +106,11 @@ function toIdeaRow(idea: IdeaNote): IdeaNoteRow {
     author_id: idea.authorId,
     author_name: idea.authorName,
     color: idea.color,
+    x: idea.x,
+    y: idea.y,
+    rotation: idea.rotation,
+    visibility: idea.visibility,
+    target_teacher_ids: idea.targetTeacherIds,
     support_user_ids: idea.supportUserIds,
     comments: idea.comments,
     pinned: idea.pinned,

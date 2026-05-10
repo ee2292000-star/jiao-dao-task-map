@@ -1464,6 +1464,7 @@ export default function Home() {
                   currentUserId={currentUser.id}
                   currentUserName={currentUser.name}
                   currentUserRole={currentUser.role}
+                  teachers={teachers}
                 />
               ) : activeTeacher ? (
                 <TeacherWorkDashboard
@@ -1573,6 +1574,7 @@ export default function Home() {
                     currentUserId={currentUser.id}
                     currentUserName={currentUser.name}
                     currentUserRole={currentUser.role}
+                    teachers={teachers}
                   />
                 )}
 
