@@ -16,6 +16,7 @@ type TeacherWorkDashboardProps = {
   onStatusChange: (taskId: string, status: Task["status"]) => void;
   onUpdateTask: (taskId: string, changes: Partial<Task>) => void;
   onQuickComment: (taskId: string, body: string) => void;
+  onNavigate?: (section: string) => void;
 };
 
 type FilterKey = "all" | "todo" | "doing" | "done" | "overdue";
@@ -152,7 +153,8 @@ export function TeacherWorkDashboard({
   events,
   onStatusChange,
   onUpdateTask,
-  onQuickComment
+  onQuickComment,
+  onNavigate
 }: TeacherWorkDashboardProps) {
   const [filter, setFilter] = useState<FilterKey>("all");
   const [selectedTaskId, setSelectedTaskId] = useState("");
@@ -428,6 +430,14 @@ export function TeacherWorkDashboard({
           <h2 className="text-5xl font-black leading-tight text-ink">{text.title}</h2>
           <p className="rounded-lg bg-forest-50 px-4 py-3 text-xl font-black text-forest-800">{teacher.name}</p>
         </div>
+        <button
+          className="mt-4 w-full rounded-lg border border-blue-100 bg-blue-50 px-4 py-4 text-left text-xl font-black text-blue-900 hover:bg-blue-100"
+          type="button"
+          onClick={() => onNavigate?.("idea-wall")}
+        >
+          本週共創主題：畢業典禮主題募集
+          <span className="mt-1 block text-base font-bold text-blue-800">進入想法牆，和同仁一起貼點子、留言與支持。</span>
+        </button>
       </section>
 
       <section className="grid items-start gap-5 xl:grid-cols-[1.1fr_.9fr]">

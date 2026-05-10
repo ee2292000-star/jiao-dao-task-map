@@ -6,6 +6,7 @@ import { ArchitecturePanel } from "@/components/ArchitecturePanel";
 import { ActivityDatabase } from "@/components/ActivityDatabase";
 import { CommandBar } from "@/components/CommandBar";
 import { AdminTaskMap } from "@/components/AdminTaskMap";
+import { IdeaWall } from "@/components/IdeaWall";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import { QuickCreatePanel } from "@/components/QuickCreatePanel";
 import { StickyWall } from "@/components/StickyWall";
@@ -37,6 +38,7 @@ const navItems = [
   ["任務看板", "kanban"],
   ["人員分工", "workload"],
   ["交流便利貼", "sticky"],
+  ["想法牆", "idea-wall"],
   ["提醒中心", "dashboard"],
   ["活動模板", "templates"],
   ["教師端預覽", "teacher"],
@@ -1384,7 +1386,7 @@ export default function Home() {
             )}
           </div>
           <nav className="mt-6 space-y-2">
-            {(effectiveMode === "director" ? navItems : [["我的任務", "teacher-portal"]]).map(([label, target]) => (
+            {(effectiveMode === "director" ? navItems : [["我的任務", "teacher-portal"], ["想法牆", "idea-wall"]]).map(([label, target]) => (
               <a
                 key={label}
                 href={`#${target}`}
@@ -1457,7 +1459,13 @@ export default function Home() {
 
           <div className="space-y-6">
             {effectiveMode === "teacher" ? (
-              activeTeacher ? (
+              currentSection === "idea-wall" ? (
+                <IdeaWall
+                  currentUserId={currentUser.id}
+                  currentUserName={currentUser.name}
+                  currentUserRole={currentUser.role}
+                />
+              ) : activeTeacher ? (
                 <TeacherWorkDashboard
                   teacher={activeTeacher}
                   teacherIds={currentUser.role === "teacher" ? currentTeacherIds : [activeTeacher.id]}
@@ -1469,6 +1477,7 @@ export default function Home() {
                   onStatusChange={handleStatusChange}
                   onUpdateTask={handleUpdateTask}
                   onQuickComment={handleQuickComment}
+                  onNavigate={setCurrentSection}
                 />
               ) : (
                 <section className="rounded-lg bg-white p-5 shadow-soft">
@@ -1556,6 +1565,14 @@ export default function Home() {
                     onDelete={handleDeleteSticky}
                     onSetStatus={handleSetStickyStatus}
                     onOpenTask={setSelectedTaskId}
+                  />
+                )}
+
+                {currentSection === "idea-wall" && (
+                  <IdeaWall
+                    currentUserId={currentUser.id}
+                    currentUserName={currentUser.name}
+                    currentUserRole={currentUser.role}
                   />
                 )}
 

@@ -37,6 +37,9 @@ const text = {
   teachers: "\u6559\u5e2b\u5de5\u4f5c\u6982\u6cc1",
   action: "\u4eca\u65e5\u5efa\u8b70\u5148\u770b",
   sticky: "\u4ea4\u6d41\u4fbf\u5229\u8cbc",
+  ideaTopic: "\u672c\u9031\u5171\u5275\u4e3b\u984c",
+  ideaTopicTitle: "\u7562\u696d\u5178\u79ae\u4e3b\u984c\u52df\u96c6",
+  ideaTopicHint: "\u9032\u5165\u60f3\u6cd5\u7246\uff0c\u8b93\u6559\u5e2b\u5011\u4e00\u8d77\u8cbc\u9ede\u5b50\u3001\u7559\u8a00\u8207\u652f\u6301\u3002",
   allTasks: "\u5168\u90e8\u4efb\u52d9",
   doing: "\u9032\u884c\u4e2d",
   todayDue: "\u4eca\u65e5\u5230\u671f",
@@ -251,6 +254,16 @@ export function AdminTaskMap({
         </div>
       </section>
 
+      <button
+        className="w-full rounded-lg border border-blue-100 bg-blue-50 p-5 text-left shadow-soft hover:bg-blue-100"
+        type="button"
+        onClick={() => onNavigate?.("idea-wall")}
+      >
+        <p className="text-xl font-black text-blue-800">{text.ideaTopic}</p>
+        <h3 className="mt-1 text-4xl font-black text-ink">{text.ideaTopicTitle}</h3>
+        <p className="mt-2 text-lg font-bold text-blue-900">{text.ideaTopicHint}</p>
+      </button>
+
       <section className="rounded-lg bg-white p-5 shadow-soft">
         <h3 className="text-4xl font-black text-ink">{text.teachers}</h3>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -324,7 +337,8 @@ export function AdminTaskMap({
             [text.kanban, "kanban"],
             [text.workload, "workload"],
             [text.timeline, "timeline"],
-            [text.stickyWall, "sticky"]
+            [text.stickyWall, "sticky"],
+            [text.ideaTopic, "idea-wall"]
           ].map(([label, section]) => (
             <button key={section} className="rounded-lg border border-forest-100 bg-warm px-4 py-4 text-left text-xl font-black text-forest-800" type="button" onClick={() => onNavigate?.(section)}>
               {label}
