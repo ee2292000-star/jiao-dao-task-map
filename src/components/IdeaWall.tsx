@@ -1,6 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import {
+  defaultIdeaTopic,
+  deleteIdeaCloud,
+  ideaTopicStorageKey,
+  ideaTopicUpdatedEvent,
+  ideaWallStorageKey,
+  isIdeaWallCloudAvailable,
+  loadIdeaWallCloudData,
+  saveIdeaTopicCloud,
+  syncIdeasCloud,
+  upsertIdeaCloud
+} from "@/lib/ideaWall";
+import type { IdeaColor, IdeaComment, IdeaNote, IdeaTopic } from "@/lib/ideaWall";
 import type { AuthRole } from "@/lib/types";
 
 type IdeaWallProps = {
@@ -8,39 +21,6 @@ type IdeaWallProps = {
   currentUserName: string;
   currentUserRole: AuthRole;
 };
-
-type IdeaComment = {
-  id: string;
-  authorId: string;
-  authorName: string;
-  body: string;
-  createdAt: string;
-};
-
-type IdeaNote = {
-  id: string;
-  title: string;
-  body: string;
-  authorId: string;
-  authorName: string;
-  color: IdeaColor;
-  supportUserIds: string[];
-  comments: IdeaComment[];
-  pinned: boolean;
-  archived: boolean;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type IdeaTopic = {
-  title: string;
-  archived: boolean;
-};
-
-type IdeaColor = "yellow" | "blue" | "green" | "pink" | "orange";
-
-const wallStorageKey = "jiao-dao-task-map:idea-wall:v1";
-const topicStorageKey = "jiao-dao-task-map:idea-wall-topic:v1";
 
 const text = {
   kicker: "\u6821\u5167\u5171\u540c\u767c\u60f3\u8207\u4ea4\u6d41\u7a7a\u9593",
@@ -52,6 +32,9 @@ const text = {
   archiveTopic: "\u5c01\u5b58\u4e3b\u984c",
   reopenTopic: "\u91cd\u958b\u4e3b\u984c",
   topicArchived: "\u9019\u500b\u4e3b\u984c\u5df2\u5c01\u5b58\uff0c\u53ef\u4ee5\u700f\u89bd\uff0c\u4e3b\u4efb\u91cd\u958b\u5f8c\u624d\u80fd\u7e7c\u7e8c\u65b0\u589e\u3002",
+  cloudReady: "\u5df2\u9023\u7dda\u96f2\u7aef\uff0c\u60f3\u6cd5\u7246\u6703\u8de8\u96fb\u8166\u540c\u6b65\u3002",
+  cloudFallback: "\u60f3\u6cd5\u7246\u96f2\u7aef\u540c\u6b65\u5c1a\u672a\u555f\u7528\uff0c\u76ee\u524d\u50c5\u4fdd\u7559\u5728\u9019\u53f0\u96fb\u8166\u3002",
+  cloudSavingFailed: "\u96f2\u7aef\u66ab\u6642\u7121\u6cd5\u5132\u5b58\uff0c\u5df2\u5148\u4fdd\u7559\u5728\u672c\u6a5f\u3002",
   newIdea: "\u8cbc\u4e0a\u4e00\u500b\u60f3\u6cd5",
   titleInput: "\u6a19\u984c\uff08\u53ef\u9078\uff09",
   bodyInput: "\u628a\u9ede\u5b50\u5beb\u4e0b\u4f86\uff0c\u53ef\u4ee5\u662f\u4e00\u53e5\u8a71\u6216\u4e00\u500b\u65b9\u5411",
@@ -69,8 +52,7 @@ const text = {
   pin: "\u7f6e\u9802",
   unpin: "\u53d6\u6d88\u7f6e\u9802",
   pinned: "\u7f6e\u9802",
-  confirmDelete: "\u78ba\u5b9a\u8981\u522a\u9664\u9019\u5f35\u60f3\u6cd5\u4fbf\u5229\u8cbc\u55ce\uff1f",
-  archive: "\u5df2\u5c01\u5b58"
+  confirmDelete: "\u78ba\u5b9a\u8981\u522a\u9664\u9019\u5f35\u60f3\u6cd5\u4fbf\u5229\u8cbc\u55ce\uff1f"
 };
 
 const colorClasses: Record<IdeaColor, string> = {
@@ -104,13 +86,27 @@ function readJson<T>(key: string, fallback: T): T {
   }
 }
 
+function writeJson<T>(key: string, value: T) {
+  window.localStorage.setItem(key, JSON.stringify(value));
+}
+
+function mergeIdeas(localIdeas: IdeaNote[], cloudIdeas: IdeaNote[]) {
+  const byId = new Map<string, IdeaNote>();
+  [...cloudIdeas, ...localIdeas].forEach((idea) => {
+    const existing = byId.get(idea.id);
+    if (!existing || idea.updatedAt.localeCompare(existing.updatedAt) >= 0) {
+      byId.set(idea.id, idea);
+    }
+  });
+  return Array.from(byId.values()).sort(
+    (a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt)
+  );
+}
+
 export function IdeaWall({ currentUserId, currentUserName, currentUserRole }: IdeaWallProps) {
   const [ideas, setIdeas] = useState<IdeaNote[]>([]);
-  const [topic, setTopic] = useState<IdeaTopic>({
-    title: "\u7562\u696d\u5178\u79ae\u4e3b\u984c\u52df\u96c6",
-    archived: false
-  });
-  const [topicDraft, setTopicDraft] = useState(topic.title);
+  const [topic, setTopic] = useState<IdeaTopic>(defaultIdeaTopic);
+  const [topicDraft, setTopicDraft] = useState(defaultIdeaTopic.title);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [color, setColor] = useState<IdeaColor>("yellow");
@@ -119,6 +115,7 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole }: Id
   const [editTitle, setEditTitle] = useState("");
   const [editBody, setEditBody] = useState("");
   const [topicNotice, setTopicNotice] = useState("");
+  const [syncNotice, setSyncNotice] = useState(isIdeaWallCloudAvailable() ? text.cloudReady : text.cloudFallback);
 
   const isAdmin = currentUserRole === "admin";
   const visibleIdeas = useMemo(
@@ -130,25 +127,49 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole }: Id
   );
 
   useEffect(() => {
-    const storedTopic = readJson<IdeaTopic>(topicStorageKey, {
-      title: "\u7562\u696d\u5178\u79ae\u4e3b\u984c\u52df\u96c6",
-      archived: false
-    });
+    let isActive = true;
+    const storedTopic = readJson<IdeaTopic>(ideaTopicStorageKey, defaultIdeaTopic);
+    const storedIdeas = readJson<IdeaNote[]>(ideaWallStorageKey, []);
     setTopic(storedTopic);
     setTopicDraft(storedTopic.title);
-    setIdeas(readJson<IdeaNote[]>(wallStorageKey, []));
+    setIdeas(storedIdeas);
+
+    async function loadCloudIdeas() {
+      if (!isIdeaWallCloudAvailable()) return;
+      try {
+        const cloudData = await loadIdeaWallCloudData();
+        if (!isActive || !cloudData) return;
+        const mergedIdeas = mergeIdeas(storedIdeas, cloudData.ideas);
+        const nextTopic = cloudData.topic.title ? cloudData.topic : storedTopic;
+        setTopic(nextTopic);
+        setTopicDraft(nextTopic.title);
+        setIdeas(mergedIdeas);
+        writeJson(ideaTopicStorageKey, nextTopic);
+        writeJson(ideaWallStorageKey, mergedIdeas);
+        await Promise.all([saveIdeaTopicCloud(nextTopic), syncIdeasCloud(mergedIdeas)]);
+        setSyncNotice(text.cloudReady);
+      } catch {
+        setSyncNotice(text.cloudFallback);
+      }
+    }
+
+    void loadCloudIdeas();
+    return () => {
+      isActive = false;
+    };
   }, []);
 
   function saveIdeas(nextIdeas: IdeaNote[]) {
     setIdeas(nextIdeas);
-    window.localStorage.setItem(wallStorageKey, JSON.stringify(nextIdeas));
+    writeJson(ideaWallStorageKey, nextIdeas);
   }
 
   function saveTopic(nextTopic: IdeaTopic) {
     setTopic(nextTopic);
     setTopicDraft(nextTopic.title);
-    window.localStorage.setItem(topicStorageKey, JSON.stringify(nextTopic));
-    window.dispatchEvent(new Event("idea-wall-topic-updated"));
+    writeJson(ideaTopicStorageKey, nextTopic);
+    window.dispatchEvent(new Event(ideaTopicUpdatedEvent));
+    void saveIdeaTopicCloud(nextTopic).catch(() => setSyncNotice(text.cloudSavingFailed));
   }
 
   function updateTopicTitle() {
@@ -177,42 +198,47 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole }: Id
       updatedAt: now
     };
     saveIdeas([idea, ...ideas]);
+    void upsertIdeaCloud(idea).catch(() => setSyncNotice(text.cloudSavingFailed));
     setTitle("");
     setBody("");
     setColor("yellow");
   }
 
+  function saveChangedIdea(ideaId: string, nextIdeas: IdeaNote[]) {
+    saveIdeas(nextIdeas);
+    const changedIdea = nextIdeas.find((idea) => idea.id === ideaId);
+    if (changedIdea) void upsertIdeaCloud(changedIdea).catch(() => setSyncNotice(text.cloudSavingFailed));
+  }
+
   function toggleSupport(ideaId: string) {
-    saveIdeas(
-      ideas.map((idea) => {
-        if (idea.id !== ideaId) return idea;
-        const supported = idea.supportUserIds.includes(currentUserId);
-        return {
-          ...idea,
-          supportUserIds: supported
-            ? idea.supportUserIds.filter((id) => id !== currentUserId)
-            : [...idea.supportUserIds, currentUserId],
-          updatedAt: todayString()
-        };
-      })
-    );
+    const nextIdeas = ideas.map((idea) => {
+      if (idea.id !== ideaId) return idea;
+      const supported = idea.supportUserIds.includes(currentUserId);
+      return {
+        ...idea,
+        supportUserIds: supported
+          ? idea.supportUserIds.filter((id) => id !== currentUserId)
+          : [...idea.supportUserIds, currentUserId],
+        updatedAt: todayString()
+      };
+    });
+    saveChangedIdea(ideaId, nextIdeas);
   }
 
   function addComment(ideaId: string) {
-    const body = commentDrafts[ideaId]?.trim();
-    if (!body) return;
+    const nextBody = commentDrafts[ideaId]?.trim();
+    if (!nextBody) return;
     const comment: IdeaComment = {
       id: `idea-comment-${Date.now()}`,
       authorId: currentUserId,
       authorName: currentUserName,
-      body,
+      body: nextBody,
       createdAt: todayString()
     };
-    saveIdeas(
-      ideas.map((idea) =>
-        idea.id === ideaId ? { ...idea, comments: [...idea.comments, comment], updatedAt: todayString() } : idea
-      )
+    const nextIdeas = ideas.map((idea) =>
+      idea.id === ideaId ? { ...idea, comments: [...idea.comments, comment], updatedAt: todayString() } : idea
     );
+    saveChangedIdea(ideaId, nextIdeas);
     setCommentDrafts((current) => ({ ...current, [ideaId]: "" }));
   }
 
@@ -225,27 +251,24 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole }: Id
   function saveEdit(ideaId: string) {
     const nextBody = editBody.trim();
     if (!nextBody) return;
-    saveIdeas(
-      ideas.map((idea) =>
-        idea.id === ideaId
-          ? { ...idea, title: editTitle.trim(), body: nextBody, updatedAt: todayString() }
-          : idea
-      )
+    const nextIdeas = ideas.map((idea) =>
+      idea.id === ideaId ? { ...idea, title: editTitle.trim(), body: nextBody, updatedAt: todayString() } : idea
     );
+    saveChangedIdea(ideaId, nextIdeas);
     setEditingId("");
   }
 
   function deleteIdea(ideaId: string) {
     if (!window.confirm(text.confirmDelete)) return;
     saveIdeas(ideas.filter((idea) => idea.id !== ideaId));
+    void deleteIdeaCloud(ideaId).catch(() => setSyncNotice(text.cloudSavingFailed));
   }
 
   function togglePin(ideaId: string) {
-    saveIdeas(
-      ideas.map((idea) =>
-        idea.id === ideaId ? { ...idea, pinned: !idea.pinned, updatedAt: todayString() } : idea
-      )
+    const nextIdeas = ideas.map((idea) =>
+      idea.id === ideaId ? { ...idea, pinned: !idea.pinned, updatedAt: todayString() } : idea
     );
+    saveChangedIdea(ideaId, nextIdeas);
   }
 
   function canManageOwn(idea: IdeaNote) {
@@ -272,18 +295,10 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole }: Id
                 placeholder={text.topicPlaceholder}
               />
               <div className="grid grid-cols-2 gap-2">
-                <button
-                  className="rounded-md bg-forest-700 px-4 py-3 text-base font-black text-white"
-                  type="button"
-                  onClick={updateTopicTitle}
-                >
+                <button className="rounded-md bg-forest-700 px-4 py-3 text-base font-black text-white" type="button" onClick={updateTopicTitle}>
                   {text.saveTopic}
                 </button>
-                <button
-                  className="rounded-md bg-rice px-4 py-3 text-base font-black text-ink"
-                  type="button"
-                  onClick={() => saveTopic({ ...topic, archived: !topic.archived })}
-                >
+                <button className="rounded-md bg-rice px-4 py-3 text-base font-black text-ink" type="button" onClick={() => saveTopic({ ...topic, archived: !topic.archived })}>
                   {topic.archived ? text.reopenTopic : text.archiveTopic}
                 </button>
               </div>
@@ -291,6 +306,7 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole }: Id
             </div>
           )}
         </div>
+        {syncNotice && <p className="mt-4 rounded-lg bg-forest-50 p-3 text-base font-black text-forest-800">{syncNotice}</p>}
         {topic.archived && <p className="mt-4 rounded-lg bg-stone-100 p-4 text-lg font-black text-stone-700">{text.topicArchived}</p>}
       </section>
 
@@ -298,25 +314,10 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole }: Id
         <section className="rounded-lg border border-forest-100 bg-white p-5 shadow-soft">
           <h3 className="text-3xl font-black text-ink">{text.newIdea}</h3>
           <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1.5fr_auto]">
-            <input
-              className="rounded-md border border-forest-100 bg-warm px-3 py-3 text-base font-bold"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder={text.titleInput}
-            />
-            <textarea
-              className="min-h-24 rounded-md border border-forest-100 bg-warm px-3 py-3 text-base font-bold"
-              value={body}
-              onChange={(event) => setBody(event.target.value)}
-              placeholder={text.bodyInput}
-            />
+            <input className="rounded-md border border-forest-100 bg-warm px-3 py-3 text-base font-bold" value={title} onChange={(event) => setTitle(event.target.value)} placeholder={text.titleInput} />
+            <textarea className="min-h-24 rounded-md border border-forest-100 bg-warm px-3 py-3 text-base font-bold" value={body} onChange={(event) => setBody(event.target.value)} placeholder={text.bodyInput} />
             <div className="grid gap-2">
-              <select
-                className="rounded-md border border-forest-100 bg-warm px-3 py-3 text-base font-black"
-                value={color}
-                onChange={(event) => setColor(event.target.value as IdeaColor)}
-                aria-label="便利貼顏色"
-              >
+              <select className="rounded-md border border-forest-100 bg-warm px-3 py-3 text-base font-black" value={color} onChange={(event) => setColor(event.target.value as IdeaColor)} aria-label="便利貼顏色">
                 {colorOptions.map((item) => (
                   <option key={item} value={item}>
                     {colorLabels[item]}
@@ -396,12 +397,7 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole }: Id
                       </div>
                     ))}
                     <div className="flex gap-2">
-                      <input
-                        className="min-w-0 flex-1 rounded-md border border-white bg-white px-3 py-2 text-sm font-bold"
-                        value={commentDrafts[idea.id] ?? ""}
-                        onChange={(event) => setCommentDrafts((current) => ({ ...current, [idea.id]: event.target.value }))}
-                        placeholder={text.commentPlaceholder}
-                      />
+                      <input className="min-w-0 flex-1 rounded-md border border-white bg-white px-3 py-2 text-sm font-bold" value={commentDrafts[idea.id] ?? ""} onChange={(event) => setCommentDrafts((current) => ({ ...current, [idea.id]: event.target.value }))} placeholder={text.commentPlaceholder} />
                       <button className="rounded-md bg-white px-3 py-2 text-sm font-black text-forest-800" type="button" onClick={() => addComment(idea.id)}>
                         {text.sendComment}
                       </button>
