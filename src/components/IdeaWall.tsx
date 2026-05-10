@@ -48,6 +48,7 @@ const text = {
   topicLabel: "\u672c\u9031\u5171\u5275\u4e3b\u984c",
   topicPlaceholder: "\u4f8b\u5982\uff1a\u7562\u696d\u5178\u79ae\u4e3b\u984c\u52df\u96c6",
   saveTopic: "\u66f4\u65b0\u4e3b\u984c",
+  topicSaved: "\u4e3b\u984c\u5df2\u66f4\u65b0",
   archiveTopic: "\u5c01\u5b58\u4e3b\u984c",
   reopenTopic: "\u91cd\u958b\u4e3b\u984c",
   topicArchived: "\u9019\u500b\u4e3b\u984c\u5df2\u5c01\u5b58\uff0c\u53ef\u4ee5\u700f\u89bd\uff0c\u4e3b\u4efb\u91cd\u958b\u5f8c\u624d\u80fd\u7e7c\u7e8c\u65b0\u589e\u3002",
@@ -117,6 +118,7 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole }: Id
   const [editingId, setEditingId] = useState("");
   const [editTitle, setEditTitle] = useState("");
   const [editBody, setEditBody] = useState("");
+  const [topicNotice, setTopicNotice] = useState("");
 
   const isAdmin = currentUserRole === "admin";
   const visibleIdeas = useMemo(
@@ -146,6 +148,14 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole }: Id
     setTopic(nextTopic);
     setTopicDraft(nextTopic.title);
     window.localStorage.setItem(topicStorageKey, JSON.stringify(nextTopic));
+    window.dispatchEvent(new Event("idea-wall-topic-updated"));
+  }
+
+  function updateTopicTitle() {
+    const nextTitle = topicDraft.trim() || topic.title;
+    saveTopic({ ...topic, title: nextTitle });
+    setTopicNotice(text.topicSaved);
+    window.setTimeout(() => setTopicNotice(""), 1800);
   }
 
   function createIdea() {
@@ -265,7 +275,7 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole }: Id
                 <button
                   className="rounded-md bg-forest-700 px-4 py-3 text-base font-black text-white"
                   type="button"
-                  onClick={() => saveTopic({ ...topic, title: topicDraft.trim() || topic.title })}
+                  onClick={updateTopicTitle}
                 >
                   {text.saveTopic}
                 </button>
@@ -277,6 +287,7 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole }: Id
                   {topic.archived ? text.reopenTopic : text.archiveTopic}
                 </button>
               </div>
+              {topicNotice && <p className="rounded-md bg-forest-50 px-3 py-2 text-base font-black text-forest-800">{topicNotice}</p>}
             </div>
           )}
         </div>

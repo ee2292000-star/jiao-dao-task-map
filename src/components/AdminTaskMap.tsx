@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Event, StickyColor, StickyNote, Task, Teacher } from "@/lib/types";
 import { getAssigneeIds, getPriorityLabel, getStatusLabel, getTodayFocusTasks } from "@/lib/decisionSupport";
 import { getDaysLeft, isTaskClosed } from "@/lib/reminders";
@@ -29,6 +29,7 @@ type AdminTaskMapProps = {
 type TeacherMode = "doing" | "today" | "overdue" | "week" | "done";
 
 const allRecipientId = "__all__";
+const ideaTopicStorageKey = "jiao-dao-task-map:idea-wall-topic:v1";
 
 const text = {
   title: "\u5168\u6821\u4efb\u52d9\u5730\u5716",
@@ -137,6 +138,28 @@ export function AdminTaskMap({
   const [quickTitle, setQuickTitle] = useState("");
   const [quickBody, setQuickBody] = useState("");
   const [quickTarget, setQuickTarget] = useState(allRecipientId);
+  const [ideaTopicTitle, setIdeaTopicTitle] = useState(text.ideaTopicTitle);
+
+  useEffect(() => {
+    function readIdeaTopic() {
+      try {
+        const raw = window.localStorage.getItem(ideaTopicStorageKey);
+        if (!raw) return;
+        const stored = JSON.parse(raw) as { title?: string };
+        if (stored.title) setIdeaTopicTitle(stored.title);
+      } catch {
+        setIdeaTopicTitle(text.ideaTopicTitle);
+      }
+    }
+
+    readIdeaTopic();
+    window.addEventListener("storage", readIdeaTopic);
+    window.addEventListener("idea-wall-topic-updated", readIdeaTopic);
+    return () => {
+      window.removeEventListener("storage", readIdeaTopic);
+      window.removeEventListener("idea-wall-topic-updated", readIdeaTopic);
+    };
+  }, []);
 
   const activeTeachers = teachers.filter((teacher) => teacher.enabled !== false);
   const summary = {
@@ -260,7 +283,7 @@ export function AdminTaskMap({
         onClick={() => onNavigate?.("idea-wall")}
       >
         <p className="text-xl font-black text-blue-800">{text.ideaTopic}</p>
-        <h3 className="mt-1 text-4xl font-black text-ink">{text.ideaTopicTitle}</h3>
+        <h3 className="mt-1 text-4xl font-black text-ink">{ideaTopicTitle}</h3>
         <p className="mt-2 text-lg font-bold text-blue-900">{text.ideaTopicHint}</p>
       </button>
 

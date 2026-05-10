@@ -33,6 +33,8 @@ type PersonalTodo = {
 
 const allRecipientId = "__all__";
 const personalTodoStoragePrefix = "jiao-dao-task-map:personal-todos:v1:";
+const ideaTopicStorageKey = "jiao-dao-task-map:idea-wall-topic:v1";
+const defaultIdeaTopicTitle = "\u7562\u696d\u5178\u79ae\u4e3b\u984c\u52df\u96c6";
 
 const text = {
   kicker: "\u6211\u7684\u5de5\u4f5c\u3001\u4f4e\u58d3\u63d0\u9192\u3001\u72c0\u614b\u56de\u5831",
@@ -168,6 +170,7 @@ export function TeacherWorkDashboard({
   const [editTodoTitle, setEditTodoTitle] = useState("");
   const [editTodoNote, setEditTodoNote] = useState("");
   const [editTodoDueDate, setEditTodoDueDate] = useState("");
+  const [ideaTopicTitle, setIdeaTopicTitle] = useState(defaultIdeaTopicTitle);
 
   const identityIds = teacherIds.length ? teacherIds : [teacher.id];
   const personalTodoStorageKey = `${personalTodoStoragePrefix}${identityIds[0] ?? teacher.id}`;
@@ -242,6 +245,27 @@ export function TeacherWorkDashboard({
       setPersonalTodos([]);
     }
   }, [personalTodoStorageKey]);
+
+  useEffect(() => {
+    function readIdeaTopic() {
+      try {
+        const raw = window.localStorage.getItem(ideaTopicStorageKey);
+        if (!raw) return;
+        const stored = JSON.parse(raw) as { title?: string };
+        if (stored.title) setIdeaTopicTitle(stored.title);
+      } catch {
+        setIdeaTopicTitle(defaultIdeaTopicTitle);
+      }
+    }
+
+    readIdeaTopic();
+    window.addEventListener("storage", readIdeaTopic);
+    window.addEventListener("idea-wall-topic-updated", readIdeaTopic);
+    return () => {
+      window.removeEventListener("storage", readIdeaTopic);
+      window.removeEventListener("idea-wall-topic-updated", readIdeaTopic);
+    };
+  }, []);
 
   function savePersonalTodos(nextTodos: PersonalTodo[]) {
     setPersonalTodos(nextTodos);
@@ -435,7 +459,7 @@ export function TeacherWorkDashboard({
           type="button"
           onClick={() => onNavigate?.("idea-wall")}
         >
-          本週共創主題：畢業典禮主題募集
+          本週共創主題：{ideaTopicTitle}
           <span className="mt-1 block text-base font-bold text-blue-800">進入想法牆，和同仁一起貼點子、留言與支持。</span>
         </button>
       </section>
