@@ -82,6 +82,14 @@ const colorClasses: Record<IdeaColor, string> = {
 
 const colorOptions: IdeaColor[] = ["yellow", "blue", "green", "pink", "orange"];
 
+const colorLabels: Record<IdeaColor, string> = {
+  yellow: "\u9ec3\u8272\u9748\u611f",
+  blue: "\u85cd\u8272\u60f3\u6cd5",
+  green: "\u7da0\u8272\u88dc\u5145",
+  pink: "\u7c89\u8272\u8a0e\u8ad6",
+  orange: "\u6a58\u8272\u63d0\u9192"
+};
+
 function todayString() {
   return new Date().toLocaleDateString("sv-SE");
 }
@@ -300,7 +308,7 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole }: Id
               >
                 {colorOptions.map((item) => (
                   <option key={item} value={item}>
-                    {item}
+                    {colorLabels[item]}
                   </option>
                 ))}
               </select>
