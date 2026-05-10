@@ -131,6 +131,9 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole, teac
   const [editingId, setEditingId] = useState("");
   const [editTitle, setEditTitle] = useState("");
   const [editBody, setEditBody] = useState("");
+  const [editColor, setEditColor] = useState<IdeaColor>("yellow");
+  const [editVisibility, setEditVisibility] = useState<IdeaVisibility>("all");
+  const [editTargetTeacherId, setEditTargetTeacherId] = useState("");
   const [topicNotice, setTopicNotice] = useState("");
   const [syncNotice, setSyncNotice] = useState(isIdeaWallCloudAvailable() ? text.cloudReady : text.cloudFallback);
   const [moveMode, setMoveMode] = useState(false);
@@ -291,12 +294,27 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole, teac
     setEditingId(idea.id);
     setEditTitle(idea.title);
     setEditBody(idea.body);
+    setEditColor(idea.color);
+    setEditVisibility(idea.visibility);
+    setEditTargetTeacherId(idea.targetTeacherIds[0] ?? "");
   }
 
   function saveEdit(ideaId: string) {
     const nextBody = editBody.trim();
     if (!nextBody) return;
-    const nextIdeas = ideas.map((idea) => idea.id === ideaId ? { ...idea, title: editTitle.trim(), body: nextBody, updatedAt: todayString() } : idea);
+    const nextIdeas = ideas.map((idea) =>
+      idea.id === ideaId
+        ? {
+            ...idea,
+            title: editTitle.trim(),
+            body: nextBody,
+            color: editColor,
+            visibility: editVisibility,
+            targetTeacherIds: editVisibility === "teachers" && editTargetTeacherId ? [editTargetTeacherId] : [],
+            updatedAt: todayString()
+          }
+        : idea
+    );
     saveChangedIdea(ideaId, nextIdeas);
     setEditingId("");
   }
@@ -402,6 +420,20 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole, teac
             <div className="mt-4 grid gap-3">
               <input className="rounded-md border border-forest-100 bg-warm px-3 py-3 text-base font-bold" value={editTitle} onChange={(event) => setEditTitle(event.target.value)} />
               <textarea className="min-h-40 rounded-md border border-forest-100 bg-warm px-3 py-3 text-base font-bold" value={editBody} onChange={(event) => setEditBody(event.target.value)} />
+              <div className="grid gap-3 sm:grid-cols-3">
+                <select className="rounded-md border border-forest-100 bg-warm px-3 py-3 text-base font-black" value={editColor} onChange={(event) => setEditColor(event.target.value as IdeaColor)} aria-label="編輯便利貼顏色">
+                  {colorOptions.map((item) => <option key={item} value={item}>{colorLabels[item]}</option>)}
+                </select>
+                <select className="rounded-md border border-forest-100 bg-warm px-3 py-3 text-base font-black" value={editVisibility} onChange={(event) => setEditVisibility(event.target.value as IdeaVisibility)} aria-label="編輯可見對象">
+                  <option value="all">全體教師</option>
+                  <option value="director">主任</option>
+                  <option value="teachers">指定教師</option>
+                </select>
+                <select className="rounded-md border border-forest-100 bg-warm px-3 py-3 text-base font-black" value={editTargetTeacherId} onChange={(event) => setEditTargetTeacherId(event.target.value)} disabled={editVisibility !== "teachers"} aria-label="編輯指定教師">
+                  <option value="">選擇教師</option>
+                  {teachers.map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.name}</option>)}
+                </select>
+              </div>
               <button className="rounded-md bg-forest-700 px-4 py-3 text-base font-black text-white" type="button" onClick={() => saveEdit(selectedIdea.id)}>{text.save}</button>
             </div>
           ) : (
