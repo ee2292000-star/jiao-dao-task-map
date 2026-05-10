@@ -141,16 +141,17 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole, teac
   const [dragging, setDragging] = useState<{ id: string; startX: number; startY: number; originalX: number; originalY: number } | null>(null);
 
   const isAdmin = currentUserRole === "admin";
+  const currentActorId = currentUserId || `name:${currentUserName}`;
   const selectedIdea = ideas.find((idea) => idea.id === selectedId);
 
   const visibleIdeas = useMemo(() => {
     const term = search.trim().toLowerCase();
     return ideas
       .filter((idea) => !idea.archived)
-      .filter((idea) => isAdmin || idea.authorId === currentUserId || idea.visibility === "all" || idea.targetTeacherIds.includes(currentUserId))
+      .filter((idea) => isAdmin || isIdeaOwner(idea) || idea.visibility === "all" || idea.targetTeacherIds.includes(currentActorId) || idea.targetTeacherIds.includes(currentUserId))
       .filter((idea) => !term || `${idea.title} ${idea.body} ${idea.authorName}`.toLowerCase().includes(term))
       .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt));
-  }, [currentUserId, ideas, isAdmin, search]);
+  }, [currentActorId, currentUserId, currentUserName, ideas, isAdmin, search]);
 
   useEffect(() => {
     let isActive = true;
@@ -218,7 +219,7 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole, teac
       id: `idea-${Date.now()}`,
       title: title.trim(),
       body: nextBody,
-      authorId: currentUserId,
+      authorId: currentActorId,
       authorName: currentUserName,
       color,
       x: Math.max(20, position.x),
@@ -275,8 +276,8 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole, teac
   function toggleSupport(ideaId: string) {
     const nextIdeas = ideas.map((idea) => {
       if (idea.id !== ideaId) return idea;
-      const supported = idea.supportUserIds.includes(currentUserId);
-      return { ...idea, supportUserIds: supported ? idea.supportUserIds.filter((id) => id !== currentUserId) : [...idea.supportUserIds, currentUserId], updatedAt: todayString() };
+      const supported = idea.supportUserIds.includes(currentActorId);
+      return { ...idea, supportUserIds: supported ? idea.supportUserIds.filter((id) => id !== currentActorId) : [...idea.supportUserIds, currentActorId], updatedAt: todayString() };
     });
     saveChangedIdea(ideaId, nextIdeas);
   }
@@ -284,7 +285,7 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole, teac
   function addComment(ideaId: string) {
     const nextBody = commentDrafts[ideaId]?.trim();
     if (!nextBody) return;
-    const comment: IdeaComment = { id: `idea-comment-${Date.now()}`, authorId: currentUserId, authorName: currentUserName, body: nextBody, createdAt: todayString() };
+    const comment: IdeaComment = { id: `idea-comment-${Date.now()}`, authorId: currentActorId, authorName: currentUserName, body: nextBody, createdAt: todayString() };
     const nextIdeas = ideas.map((idea) => idea.id === ideaId ? { ...idea, comments: [...idea.comments, comment], updatedAt: todayString() } : idea);
     saveChangedIdea(ideaId, nextIdeas);
     setCommentDrafts((current) => ({ ...current, [ideaId]: "" }));
@@ -331,8 +332,13 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole, teac
     saveChangedIdea(ideaId, nextIdeas);
   }
 
+  function isIdeaOwner(idea: IdeaNote) {
+    if (idea.authorId) return idea.authorId === currentActorId || idea.authorId === currentUserId;
+    return Boolean(idea.authorName && idea.authorName === currentUserName);
+  }
+
   function canManage(idea: IdeaNote) {
-    return isAdmin || idea.authorId === currentUserId;
+    return isAdmin || isIdeaOwner(idea);
   }
 
   return (
@@ -409,7 +415,7 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole, teac
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
-            <button className={`rounded-md px-3 py-2 text-base font-black ${selectedIdea.supportUserIds.includes(currentUserId) ? "bg-forest-700 text-white" : "bg-rice text-forest-800"}`} type="button" onClick={() => toggleSupport(selectedIdea.id)}>{selectedIdea.supportUserIds.includes(currentUserId) ? text.supported : text.support} {selectedIdea.supportUserIds.length}</button>
+            <button className={`rounded-md px-3 py-2 text-base font-black ${selectedIdea.supportUserIds.includes(currentActorId) ? "bg-forest-700 text-white" : "bg-rice text-forest-800"}`} type="button" onClick={() => toggleSupport(selectedIdea.id)}>{selectedIdea.supportUserIds.includes(currentActorId) ? text.supported : text.support} {selectedIdea.supportUserIds.length}</button>
             {isAdmin && <button className="rounded-md bg-rice px-3 py-2 text-base font-black" type="button" onClick={() => togglePin(selectedIdea.id)}>{selectedIdea.pinned ? text.unpin : text.pin}</button>}
             {canManage(selectedIdea) && <button className="rounded-md bg-rice px-3 py-2 text-base font-black" type="button" onClick={() => startEdit(selectedIdea)}>{text.edit}</button>}
             {canManage(selectedIdea) && <button className="rounded-md bg-red-50 px-3 py-2 text-base font-black text-red-700" type="button" onClick={() => deleteIdea(selectedIdea.id)}>{text.remove}</button>}
