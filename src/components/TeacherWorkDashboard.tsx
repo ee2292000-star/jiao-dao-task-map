@@ -1,8 +1,18 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import type { Event, StickyNote, Task, Teacher } from "@/lib/types";
 import { getAssigneeIds, getPriorityLabel, getStatusLabel } from "@/lib/decisionSupport";
+import {
+  deletePersonalTodoCloud,
+  isPersonalTodoCloudAvailable,
+  loadPersonalTodosCloud,
+  mergePersonalTodos,
+  personalTodoStoragePrefix,
+  syncPersonalTodosCloud,
+  upsertPersonalTodoCloud
+} from "@/lib/personalTodos";
+import type { PersonalTodo } from "@/lib/personalTodos";
 import { getDaysLeft, isTaskClosed } from "@/lib/reminders";
 
 type TeacherWorkDashboardProps = {
@@ -21,18 +31,7 @@ type TeacherWorkDashboardProps = {
 
 type FilterKey = "all" | "todo" | "doing" | "done" | "overdue";
 
-type PersonalTodo = {
-  id: string;
-  title: string;
-  note: string;
-  dueDate?: string;
-  status: "todo" | "done";
-  createdAt: string;
-  updatedAt: string;
-};
-
 const allRecipientId = "__all__";
-const personalTodoStoragePrefix = "jiao-dao-task-map:personal-todos:v1:";
 const ideaTopicStorageKey = "jiao-dao-task-map:idea-wall-topic:v1";
 const defaultIdeaTopicTitle = "\u7562\u696d\u5178\u79ae\u4e3b\u984c\u52df\u96c6";
 
@@ -171,9 +170,15 @@ export function TeacherWorkDashboard({
   const [editTodoNote, setEditTodoNote] = useState("");
   const [editTodoDueDate, setEditTodoDueDate] = useState("");
   const [ideaTopicTitle, setIdeaTopicTitle] = useState(defaultIdeaTopicTitle);
+  const [todoSyncNotice, setTodoSyncNotice] = useState(
+    isPersonalTodoCloudAvailable()
+      ? "\u500b\u4eba\u4ee3\u8fa6\u5df2\u555f\u7528\u96f2\u7aef\u540c\u6b65\u3002"
+      : "\u500b\u4eba\u4ee3\u8fa6\u76ee\u524d\u50c5\u4fdd\u7559\u5728\u9019\u53f0\u96fb\u8166\u3002"
+  );
 
   const identityIds = teacherIds.length ? teacherIds : [teacher.id];
-  const personalTodoStorageKey = `${personalTodoStoragePrefix}${identityIds[0] ?? teacher.id}`;
+  const personalTodoOwnerId = identityIds[0] ?? teacher.id;
+  const personalTodoStorageKey = `${personalTodoStoragePrefix}${personalTodoOwnerId}`;
   const myTasks = useMemo(
     () => tasks.filter((task) => isAssignedToTeacher(task, identityIds) && task.status !== "archived"),
     [identityIds, tasks]
@@ -237,15 +242,34 @@ export function TeacherWorkDashboard({
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(personalTodoStorageKey);
-      const parsed = raw ? (JSON.parse(raw) as PersonalTodo[]) : [];
-      setPersonalTodos(Array.isArray(parsed) ? parsed : []);
-    } catch {
-      setPersonalTodos([]);
-    }
-  }, [personalTodoStorageKey]);
+    let isActive = true;
+    const raw = window.localStorage.getItem(personalTodoStorageKey);
+    const parsed = raw ? (JSON.parse(raw) as PersonalTodo[]) : [];
+    const localTodos = Array.isArray(parsed)
+      ? parsed.map((todo) => ({ ...todo, ownerId: todo.ownerId || personalTodoOwnerId }))
+      : [];
+    setPersonalTodos(localTodos);
 
+    async function loadCloudTodos() {
+      if (!isPersonalTodoCloudAvailable()) return;
+      try {
+        const cloudTodos = await loadPersonalTodosCloud(personalTodoOwnerId);
+        if (!isActive || !cloudTodos) return;
+        const mergedTodos = mergePersonalTodos(localTodos, cloudTodos, personalTodoOwnerId);
+        setPersonalTodos(mergedTodos);
+        window.localStorage.setItem(personalTodoStorageKey, JSON.stringify(mergedTodos));
+        await syncPersonalTodosCloud(mergedTodos);
+        setTodoSyncNotice("\u500b\u4eba\u4ee3\u8fa6\u5df2\u555f\u7528\u96f2\u7aef\u540c\u6b65\u3002");
+      } catch {
+        setTodoSyncNotice("\u96f2\u7aef\u4ee3\u8fa6\u66ab\u6642\u7121\u6cd5\u540c\u6b65\uff0c\u5df2\u5148\u4fdd\u7559\u5728\u672c\u6a5f\u3002");
+      }
+    }
+
+    void loadCloudTodos();
+    return () => {
+      isActive = false;
+    };
+  }, [personalTodoOwnerId, personalTodoStorageKey]);
   useEffect(() => {
     function readIdeaTopic() {
       try {
@@ -268,11 +292,21 @@ export function TeacherWorkDashboard({
   }, []);
 
   function savePersonalTodos(nextTodos: PersonalTodo[]) {
-    setPersonalTodos(nextTodos);
+    const ownedTodos = nextTodos.map((todo) => ({ ...todo, ownerId: todo.ownerId || personalTodoOwnerId }));
+    setPersonalTodos(ownedTodos);
     try {
-      window.localStorage.setItem(personalTodoStorageKey, JSON.stringify(nextTodos));
+      window.localStorage.setItem(personalTodoStorageKey, JSON.stringify(ownedTodos));
     } catch {
-      // Personal todos are intentionally local-only. Ignore storage failures quietly.
+      // Personal todos still have local fallback. Ignore storage failures quietly.
+    }
+  }
+
+  function saveChangedPersonalTodo(nextTodos: PersonalTodo[], changedTodo?: PersonalTodo) {
+    savePersonalTodos(nextTodos);
+    if (changedTodo) {
+      void upsertPersonalTodoCloud({ ...changedTodo, ownerId: personalTodoOwnerId }).catch(() =>
+        setTodoSyncNotice("\u96f2\u7aef\u4ee3\u8fa6\u66ab\u6642\u7121\u6cd5\u540c\u6b65\uff0c\u5df2\u5148\u4fdd\u7559\u5728\u672c\u6a5f\u3002")
+      );
     }
   }
 
@@ -282,6 +316,7 @@ export function TeacherWorkDashboard({
     const today = new Date().toLocaleDateString("sv-SE");
     const newTodo: PersonalTodo = {
       id: `personal-todo-${Date.now()}`,
+      ownerId: personalTodoOwnerId,
       title,
       note: todoNote.trim(),
       dueDate: todoDueDate || undefined,
@@ -289,7 +324,7 @@ export function TeacherWorkDashboard({
       createdAt: today,
       updatedAt: today
     };
-    savePersonalTodos([newTodo, ...personalTodos]);
+    saveChangedPersonalTodo([newTodo, ...personalTodos], newTodo);
     setTodoTitle("");
     setTodoNote("");
     setTodoDueDate("");
@@ -306,30 +341,31 @@ export function TeacherWorkDashboard({
     const title = editTodoTitle.trim();
     if (!title) return;
     const today = new Date().toLocaleDateString("sv-SE");
-    savePersonalTodos(
-      personalTodos.map((todo) =>
+    const nextTodos = personalTodos.map((todo) =>
         todo.id === todoId
           ? { ...todo, title, note: editTodoNote.trim(), dueDate: editTodoDueDate || undefined, updatedAt: today }
           : todo
-      )
     );
+    saveChangedPersonalTodo(nextTodos, nextTodos.find((todo) => todo.id === todoId));
     setEditingTodoId("");
   }
 
   function toggleTodoDone(todoId: string) {
     const today = new Date().toLocaleDateString("sv-SE");
-    savePersonalTodos(
-      personalTodos.map((todo) =>
+    const nextTodos: PersonalTodo[] = personalTodos.map((todo) =>
         todo.id === todoId
           ? { ...todo, status: todo.status === "done" ? "todo" : "done", updatedAt: today }
           : todo
-      )
     );
+    saveChangedPersonalTodo(nextTodos, nextTodos.find((todo) => todo.id === todoId));
   }
 
   function deletePersonalTodo(todoId: string) {
     if (!window.confirm(todoText.confirmDelete)) return;
     savePersonalTodos(personalTodos.filter((todo) => todo.id !== todoId));
+    void deletePersonalTodoCloud(todoId, personalTodoOwnerId).catch(() =>
+      setTodoSyncNotice("\u96f2\u7aef\u4ee3\u8fa6\u66ab\u6642\u7121\u6cd5\u540c\u6b65\uff0c\u5df2\u5148\u4fdd\u7559\u5728\u672c\u6a5f\u3002")
+    );
   }
 
   function openTask(task: Task) {
@@ -484,6 +520,7 @@ export function TeacherWorkDashboard({
                 {pendingTodos.length} {todoText.pending}
               </span>
             </div>
+            <p className="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-base font-black text-blue-800">{todoSyncNotice}</p>
 
             <div className="mt-4 grid gap-2 rounded-lg bg-blue-50 p-3">
               <input
