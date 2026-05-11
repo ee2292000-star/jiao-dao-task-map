@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { MouseEvent, PointerEvent } from "react";
+import { getDaysLeft } from "@/lib/reminders";
 import {
   deletePersonalTodoCloud,
   isPersonalTodoCloudAvailable,
@@ -13,7 +14,6 @@ import {
 } from "@/lib/personalTodos";
 import type { PersonalTodo } from "@/lib/personalTodos";
 import type { Task } from "@/lib/types";
-import { getDaysLeft } from "@/lib/reminders";
 
 type StickyColor = NonNullable<PersonalTodo["color"]>;
 type StickyStatus = PersonalTodo["status"];
@@ -75,7 +75,7 @@ function writeLocalTodos(key: string, todos: PersonalTodo[]) {
   try {
     window.localStorage.setItem(key, JSON.stringify(todos));
   } catch {
-    // Local storage is only a fallback when cloud sync cannot be reached.
+    // Cloud sync is the primary path; local storage is only a fallback.
   }
 }
 
@@ -85,8 +85,8 @@ function normalizeTodo(todo: PersonalTodo, index = 0): PersonalTodo {
     content: todo.content ?? todo.note ?? "",
     note: todo.note ?? todo.content ?? "",
     color: todo.color ?? colors[index % colors.length],
-    x: Number.isFinite(todo.x) ? todo.x : 50 + (index % 4) * 230,
-    y: Number.isFinite(todo.y) ? todo.y : 70 + Math.floor(index / 4) * 185,
+    x: Number.isFinite(todo.x) ? todo.x : 70 + (index % 4) * 260,
+    y: Number.isFinite(todo.y) ? todo.y : 80 + Math.floor(index / 4) * 220,
     rotation: Number.isFinite(todo.rotation) ? todo.rotation : [-2, 1, -1, 2][index % 4],
     isPrivate: true
   };
@@ -115,7 +115,7 @@ export function MyWorkWall({ ownerId, ownerName, officialTasks = [] }: MyWorkWal
   const [color, setColor] = useState<StickyColor>("yellow");
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState("");
-  const [draftPosition, setDraftPosition] = useState({ x: 80, y: 90 });
+  const [draftPosition, setDraftPosition] = useState({ x: 90, y: 90 });
   const [dragging, setDragging] = useState<{ id: string; startX: number; startY: number; originalX: number; originalY: number } | null>(null);
   const [syncNotice, setSyncNotice] = useState(
     isPersonalTodoCloudAvailable()
@@ -132,6 +132,8 @@ export function MyWorkWall({ ownerId, ownerName, officialTasks = [] }: MyWorkWal
       .sort((a, b) => statusSortValue(a.status) - statusSortValue(b.status) || b.updatedAt.localeCompare(a.updatedAt));
   }, [search, stickies]);
   const tornStickies = stickies.filter((sticky) => sticky.status === "done" || sticky.status === "archived");
+  const todoCount = stickies.filter((sticky) => sticky.status === "todo").length;
+  const doingCount = stickies.filter((sticky) => sticky.status === "doing").length;
 
   useEffect(() => {
     let isActive = true;
@@ -176,6 +178,7 @@ export function MyWorkWall({ ownerId, ownerName, officialTasks = [] }: MyWorkWal
     const nextTitle = title.trim();
     const nextContent = content.trim();
     if (!nextTitle && !nextContent) return;
+
     const now = todayString();
     const sticky: PersonalTodo = {
       id: `personal-sticky-${Date.now()}`,
@@ -231,8 +234,8 @@ export function MyWorkWall({ ownerId, ownerName, officialTasks = [] }: MyWorkWal
       id: sticky.id,
       startX: event.clientX,
       startY: event.clientY,
-      originalX: sticky.x ?? 80,
-      originalY: sticky.y ?? 80
+      originalX: sticky.x ?? 90,
+      originalY: sticky.y ?? 90
     });
   }
 
@@ -265,17 +268,17 @@ export function MyWorkWall({ ownerId, ownerName, officialTasks = [] }: MyWorkWal
   }
 
   return (
-    <section className="rounded-lg bg-white p-5 shadow-soft" id="my-work-wall">
-      <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-start">
+    <section className="rounded-lg bg-white p-4 shadow-soft sm:p-5" id="my-work-wall">
+      <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-end">
         <div>
           <p className="text-xl font-bold text-forest-700">個人便利貼、班級提醒、教學待辦</p>
           <h2 className="mt-1 text-5xl font-black leading-tight text-ink">我的工作牆</h2>
-          <p className="mt-2 text-lg font-bold text-stone-700">{ownerName} 的私人工作牆，主任不會拿它列入正式任務統計。</p>
+          <p className="mt-2 text-lg font-bold text-stone-700">{ownerName} 的私人工作牆，不列入正式行政任務統計。</p>
         </div>
         <div className="rounded-lg bg-forest-50 px-4 py-3 text-base font-black text-forest-800">{syncNotice}</div>
       </div>
 
-      <div className="mt-5 grid gap-3 rounded-lg border border-forest-100 bg-rice p-4 xl:grid-cols-[1fr_1.2fr_auto]">
+      <div className="mt-5 grid gap-3 rounded-lg border border-forest-100 bg-rice p-4 xl:grid-cols-[1fr_1.2fr_180px_170px_170px]">
         <input
           className="rounded-md border border-forest-100 bg-white px-3 py-3 text-lg font-bold"
           value={title}
@@ -288,9 +291,6 @@ export function MyWorkWall({ ownerId, ownerName, officialTasks = [] }: MyWorkWal
           onChange={(event) => setContent(event.target.value)}
           placeholder="想記下來的事"
         />
-        <button className="rounded-md bg-forest-700 px-5 py-3 text-lg font-black text-white" type="button" onClick={() => createSticky()}>
-          新增便利貼
-        </button>
         <input
           className="rounded-md border border-forest-100 bg-white px-3 py-3 text-lg font-bold"
           type="date"
@@ -301,88 +301,89 @@ export function MyWorkWall({ ownerId, ownerName, officialTasks = [] }: MyWorkWal
         <select className="rounded-md border border-forest-100 bg-white px-3 py-3 text-lg font-bold" value={color} onChange={(event) => setColor(event.target.value as StickyColor)}>
           {colors.map((nextColor) => <option key={nextColor} value={nextColor}>{colorLabels[nextColor]}</option>)}
         </select>
+        <button className="rounded-md bg-forest-700 px-5 py-3 text-lg font-black text-white" type="button" onClick={() => createSticky()}>
+          新增便利貼
+        </button>
         <input
-          className="rounded-md border border-forest-100 bg-white px-3 py-3 text-lg font-bold"
+          className="rounded-md border border-forest-100 bg-white px-3 py-3 text-lg font-bold xl:col-span-5"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           placeholder="搜尋我的便利貼"
         />
       </div>
 
-      <div className="mt-5 grid gap-5 xl:grid-cols-[1fr_320px]">
-        <div
-          className="relative min-h-[560px] overflow-auto rounded-lg border border-forest-100 bg-[radial-gradient(circle_at_1px_1px,rgba(47,93,58,0.12)_1px,transparent_0)] bg-[length:24px_24px] p-4"
-          onDoubleClick={handleBoardDoubleClick}
-        >
-          {!activeStickies.length && (
-            <div className="absolute left-6 top-6 rounded-lg bg-white/90 p-5 text-xl font-black text-forest-800 shadow-soft">
-              這面牆還是空的。雙擊白板空白處或按「新增便利貼」開始。
+      <div
+        className="relative mt-5 min-h-[65vh] overflow-auto rounded-lg border border-forest-100 bg-[radial-gradient(circle_at_1px_1px,rgba(47,93,58,0.12)_1px,transparent_0)] bg-[length:24px_24px] p-4 xl:min-h-[72vh]"
+        onDoubleClick={handleBoardDoubleClick}
+      >
+        {!activeStickies.length && (
+          <div className="absolute left-6 top-6 rounded-lg bg-white/90 p-5 text-xl font-black text-forest-800 shadow-soft">
+            這面牆還是空的。雙擊白板空白處或按「新增便利貼」開始。
+          </div>
+        )}
+        {activeStickies.map((sticky) => {
+          const stickyColor = sticky.color ?? "yellow";
+          const isDone = sticky.status === "done";
+          return (
+            <button
+              key={sticky.id}
+              className={`absolute w-64 rounded-sm border p-4 text-left shadow-lg transition ${colorClasses[stickyColor]} ${isDone ? "scale-95 opacity-50" : "hover:scale-[1.02]"}`}
+              style={{ left: sticky.x ?? 90, top: sticky.y ?? 90, transform: `rotate(${sticky.rotation ?? 0}deg)` }}
+              type="button"
+              onClick={() => setSelectedId(sticky.id)}
+              onPointerDown={(event) => startDrag(event, sticky)}
+              onPointerMove={moveDrag}
+              onPointerUp={endDrag}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <span className={`rounded px-2 py-1 text-xs font-black ${statusClasses[sticky.status]}`}>{statusLabels[sticky.status]}</span>
+                {sticky.dueDate && <span className="text-xs font-black text-stone-700">{sticky.dueDate}</span>}
+              </div>
+              <h3 className="mt-3 text-2xl font-black leading-tight text-ink">{sticky.title}</h3>
+              <p className="mt-2 line-clamp-5 text-base font-bold leading-relaxed text-stone-800">{sticky.content || sticky.note || "沒有補充內容"}</p>
+              <p className="mt-4 text-xs font-black text-stone-600">更新 {sticky.updatedAt}</p>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="mt-5 grid gap-4 xl:grid-cols-3">
+        <div className="rounded-lg bg-rice p-4">
+          <h3 className="text-2xl font-black text-ink">今日要處理</h3>
+          <div className="mt-3 grid grid-cols-2 gap-2 text-center">
+            <div className="rounded-md bg-white p-3">
+              <p className="text-3xl font-black text-forest-700">{todoCount}</p>
+              <p className="text-base font-black text-stone-700">待辦</p>
             </div>
-          )}
-          {activeStickies.map((sticky) => {
-            const stickyColor = sticky.color ?? "yellow";
-            const isDone = sticky.status === "done";
-            return (
-              <button
-                key={sticky.id}
-                className={`absolute w-56 rounded-sm border p-4 text-left shadow-lg transition ${colorClasses[stickyColor]} ${isDone ? "opacity-55 scale-95" : "hover:scale-[1.02]"}`}
-                style={{ left: sticky.x ?? 80, top: sticky.y ?? 80, transform: `rotate(${sticky.rotation ?? 0}deg)` }}
-                type="button"
-                onClick={() => setSelectedId(sticky.id)}
-                onPointerDown={(event) => startDrag(event, sticky)}
-                onPointerMove={moveDrag}
-                onPointerUp={endDrag}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <span className={`rounded px-2 py-1 text-xs font-black ${statusClasses[sticky.status]}`}>{statusLabels[sticky.status]}</span>
-                  {sticky.dueDate && <span className="text-xs font-black text-stone-700">{sticky.dueDate}</span>}
-                </div>
-                <h3 className="mt-3 text-2xl font-black leading-tight text-ink">{sticky.title}</h3>
-                <p className="mt-2 line-clamp-4 text-base font-bold leading-relaxed text-stone-800">{sticky.content || sticky.note || "沒有補充內容"}</p>
-                <p className="mt-4 text-xs font-black text-stone-600">更新 {sticky.updatedAt}</p>
-              </button>
-            );
-          })}
+            <div className="rounded-md bg-blue-50 p-3">
+              <p className="text-3xl font-black text-blue-800">{doingCount}</p>
+              <p className="text-base font-black text-stone-700">進行中</p>
+            </div>
+          </div>
         </div>
 
-        <aside className="space-y-4">
-          <div className="rounded-lg bg-rice p-4">
-            <h3 className="text-2xl font-black text-ink">今日要處理</h3>
-            <div className="mt-3 grid grid-cols-2 gap-2 text-center">
-              <div className="rounded-md bg-white p-3">
-                <p className="text-3xl font-black text-forest-700">{stickies.filter((sticky) => sticky.status === "todo").length}</p>
-                <p className="text-base font-black text-stone-700">待辦</p>
+        <div className="rounded-lg bg-white p-4 shadow-soft">
+          <h3 className="text-2xl font-black text-ink">正式任務提醒</h3>
+          <div className="mt-3 space-y-2">
+            {officialTasks.length ? officialTasks.slice(0, 4).map((task) => (
+              <div key={task.id} className="rounded-md border border-forest-100 bg-forest-50 p-3">
+                <p className="text-base font-black text-ink">{task.title}</p>
+                <p className="mt-1 text-sm font-bold text-forest-800">{officialTaskDueText(task)}｜主任指派</p>
               </div>
-              <div className="rounded-md bg-blue-50 p-3">
-                <p className="text-3xl font-black text-blue-800">{stickies.filter((sticky) => sticky.status === "doing").length}</p>
-                <p className="text-base font-black text-stone-700">進行中</p>
-              </div>
-            </div>
+            )) : <p className="rounded-md bg-rice p-3 text-base font-black text-forest-800">目前沒有主任指派的正式任務。</p>}
           </div>
+        </div>
 
-          <div className="rounded-lg bg-white p-4 shadow-soft">
-            <h3 className="text-2xl font-black text-ink">正式任務提醒</h3>
-            <div className="mt-3 space-y-2">
-              {officialTasks.length ? officialTasks.slice(0, 4).map((task) => (
-                <div key={task.id} className="rounded-md border border-forest-100 bg-forest-50 p-3">
-                  <p className="text-base font-black text-ink">{task.title}</p>
-                  <p className="mt-1 text-sm font-bold text-forest-800">{officialTaskDueText(task)}｜主任指派</p>
-                </div>
-              )) : <p className="rounded-md bg-rice p-3 text-base font-black text-forest-800">目前沒有主任指派的正式任務。</p>}
-            </div>
+        <div className="rounded-lg bg-white p-4 shadow-soft">
+          <h3 className="text-2xl font-black text-ink">已撕下的便利貼</h3>
+          <div className="mt-3 space-y-2">
+            {tornStickies.length ? tornStickies.slice(0, 6).map((sticky) => (
+              <button key={sticky.id} className="w-full rounded-md bg-stone-50 p-3 text-left text-base font-black text-stone-700" type="button" onClick={() => setSelectedId(sticky.id)}>
+                {sticky.title}
+              </button>
+            )) : <p className="rounded-md bg-rice p-3 text-base font-black text-forest-800">完成後的便利貼會留在這裡。</p>}
           </div>
-
-          <div className="rounded-lg bg-white p-4 shadow-soft">
-            <h3 className="text-2xl font-black text-ink">已撕下的便利貼</h3>
-            <div className="mt-3 space-y-2">
-              {tornStickies.length ? tornStickies.slice(0, 6).map((sticky) => (
-                <button key={sticky.id} className="w-full rounded-md bg-stone-50 p-3 text-left text-base font-black text-stone-700" type="button" onClick={() => setSelectedId(sticky.id)}>
-                  {sticky.title}
-                </button>
-              )) : <p className="rounded-md bg-rice p-3 text-base font-black text-forest-800">完成後的便利貼會留在這裡。</p>}
-            </div>
-          </div>
-        </aside>
+        </div>
       </div>
 
       {selectedSticky && (

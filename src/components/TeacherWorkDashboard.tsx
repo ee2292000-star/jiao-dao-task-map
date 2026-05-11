@@ -501,43 +501,39 @@ export function TeacherWorkDashboard({
         </button>
       </section>
 
-      <section className="grid items-start gap-5 xl:grid-cols-[1.1fr_.9fr]">
-        <div className="space-y-5">
-          <div className="rounded-lg bg-white p-5 shadow-soft">
-            <h3 className="text-4xl font-black text-ink">{text.todayTasks}</h3>
-            <p className="mt-1 text-lg font-bold text-stone-700">{text.todayHint}</p>
-            <div className="mt-4 grid gap-3">
-              {todayTasks.length ? todayTasks.map(renderTaskCard) : <p className="rounded-lg bg-rice p-5 text-xl font-black text-forest-800">{text.noToday}</p>}
-            </div>
-          </div>
+      <MyWorkWall ownerId={personalTodoOwnerId} ownerName={teacher.name} officialTasks={myTasks} />
 
-          <MyWorkWall ownerId={personalTodoOwnerId} ownerName={teacher.name} officialTasks={myTasks} />
+      <section className="grid items-start gap-5 xl:grid-cols-3">
+        <div className="rounded-lg bg-white p-5 shadow-soft">
+          <h3 className="text-3xl font-black text-ink">{text.todayTasks}</h3>
+          <p className="mt-1 text-base font-bold text-stone-700">{text.todayHint}</p>
+          <div className="mt-4 grid gap-3">
+            {todayTasks.length ? todayTasks.slice(0, 3).map(renderTaskCard) : <p className="rounded-lg bg-rice p-5 text-xl font-black text-forest-800">{text.noToday}</p>}
+          </div>
         </div>
 
-        <div className="space-y-5">
-          <div className="rounded-lg bg-white p-5 shadow-soft">
-            <h3 className="text-3xl font-black text-ink">{text.weekProgress}</h3>
-            <div className="mt-4 rounded-lg bg-rice p-4">
-              <div className="flex items-end justify-between">
-                <p className="text-lg font-black text-forest-800">{text.completedPrefix} {doneCount} / {weekTasks.length}</p>
-                <p className="text-4xl font-black text-forest-700">{progressRate}%</p>
-              </div>
-              <div className="mt-3 h-4 overflow-hidden rounded-full bg-white">
-                <div className="h-full rounded-full bg-forest-700" style={{ width: `${progressRate}%` }} />
-              </div>
+        <div className="rounded-lg bg-white p-5 shadow-soft">
+          <h3 className="text-3xl font-black text-ink">{text.weekProgress}</h3>
+          <div className="mt-4 rounded-lg bg-rice p-4">
+            <div className="flex items-end justify-between">
+              <p className="text-lg font-black text-forest-800">{text.completedPrefix} {doneCount} / {weekTasks.length}</p>
+              <p className="text-4xl font-black text-forest-700">{progressRate}%</p>
+            </div>
+            <div className="mt-3 h-4 overflow-hidden rounded-full bg-white">
+              <div className="h-full rounded-full bg-forest-700" style={{ width: `${progressRate}%` }} />
             </div>
           </div>
+        </div>
 
-          <div className="rounded-lg bg-white p-5 shadow-soft">
-            <h3 className="text-3xl font-black text-ink">{text.recentNotice}</h3>
-            <div className="mt-4 space-y-2">
-              {notices.length ? notices.map((notice) => (
-                <button key={notice.id} className="w-full rounded-lg bg-rice p-3 text-left" type="button" onClick={() => notice.taskId && setSelectedTaskId(notice.taskId)}>
-                  <p className="text-lg font-black text-ink">{notice.title}</p>
-                  <p className="text-base font-bold text-stone-700">{notice.detail}</p>
-                </button>
-              )) : <p className="rounded-lg bg-rice p-4 text-lg font-black text-forest-800">{text.noNotice}</p>}
-            </div>
+        <div className="rounded-lg bg-white p-5 shadow-soft">
+          <h3 className="text-3xl font-black text-ink">{text.recentNotice}</h3>
+          <div className="mt-4 space-y-2">
+            {notices.length ? notices.slice(0, 4).map((notice) => (
+              <button key={notice.id} className="w-full rounded-lg bg-rice p-3 text-left" type="button" onClick={() => notice.taskId && setSelectedTaskId(notice.taskId)}>
+                <p className="text-lg font-black text-ink">{notice.title}</p>
+                <p className="text-base font-bold text-stone-700">{notice.detail}</p>
+              </button>
+            )) : <p className="rounded-lg bg-rice p-4 text-lg font-black text-forest-800">{text.noNotice}</p>}
           </div>
         </div>
       </section>
