@@ -7,6 +7,7 @@ import { ActivityDatabase } from "@/components/ActivityDatabase";
 import { CommandBar } from "@/components/CommandBar";
 import { AdminTaskMap } from "@/components/AdminTaskMap";
 import { IdeaWall } from "@/components/IdeaWall";
+import { InspirationWall } from "@/components/InspirationWall";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import { MyWorkWall } from "@/components/MyWorkWall";
 import { QuickCreatePanel } from "@/components/QuickCreatePanel";
@@ -35,6 +36,7 @@ import type { Priority, StickyColor } from "@/lib/types";
 const navItems = [
   ["工作總覽", "dashboard"],
   ["我的工作牆", "my-work-wall"],
+  ["我的靈感牆", "inspiration-wall"],
   ["校內共創牆", "idea-wall"],
   ["正式任務牆", "kanban"],
   ["任務與活動新增", "quick-create"],
@@ -1388,7 +1390,7 @@ export default function Home() {
             )}
           </div>
           <nav className="mt-6 space-y-2">
-            {(effectiveMode === "director" ? navItems : [["我的工作牆", "teacher-portal"], ["校內共創牆", "idea-wall"], ["正式任務牆", "teacher-portal"]]).map(([label, target]) => (
+            {(effectiveMode === "director" ? navItems : [["我的工作牆", "teacher-portal"], ["我的靈感牆", "inspiration-wall"], ["校內共創牆", "idea-wall"], ["正式任務牆", "teacher-portal"]]).map(([label, target]) => (
               <a
                 key={label}
                 href={`#${target}`}
@@ -1461,7 +1463,15 @@ export default function Home() {
 
           <div className="space-y-6">
             {effectiveMode === "teacher" ? (
-              currentSection === "idea-wall" ? (
+              currentSection === "inspiration-wall" ? (
+                <InspirationWall
+                  ownerId={currentUser.id}
+                  ownerName={currentUser.name}
+                  role={currentUser.role}
+                  teachers={visibleTeachers}
+                  onCreateOfficialTask={handleCreateTask}
+                />
+              ) : currentSection === "idea-wall" ? (
                 <IdeaWall
                   currentUserId={currentUser.id}
                   currentUserName={currentUser.name}
@@ -1495,6 +1505,16 @@ export default function Home() {
               <>
                 {currentSection === "my-work-wall" && (
                   <MyWorkWall ownerId={currentUser.id} ownerName={currentUser.name} officialTasks={[]} />
+                )}
+
+                {currentSection === "inspiration-wall" && (
+                  <InspirationWall
+                    ownerId={currentUser.id}
+                    ownerName={currentUser.name}
+                    role={currentUser.role}
+                    teachers={visibleTeachers}
+                    onCreateOfficialTask={handleCreateTask}
+                  />
                 )}
 
                 {currentSection === "dashboard" && (
