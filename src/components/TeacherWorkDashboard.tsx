@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Event, StickyNote, Task, Teacher } from "@/lib/types";
 import { getAssigneeIds, getPriorityLabel, getStatusLabel } from "@/lib/decisionSupport";
+import { MyWorkWall } from "@/components/MyWorkWall";
 import {
   deletePersonalTodoCloud,
   isPersonalTodoCloudAvailable,
@@ -510,56 +511,7 @@ export function TeacherWorkDashboard({
             </div>
           </div>
 
-          <div className="rounded-lg border border-blue-100 bg-white p-5 shadow-soft">
-            <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-start">
-              <div>
-                <p className="text-xl font-bold text-blue-700">{todoText.hint}</p>
-                <h3 className="mt-1 text-4xl font-black text-ink">{todoText.title}</h3>
-              </div>
-              <span className="rounded-md bg-blue-50 px-3 py-2 text-base font-black text-blue-800">
-                {pendingTodos.length} {todoText.pending}
-              </span>
-            </div>
-            <p className="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-base font-black text-blue-800">{todoSyncNotice}</p>
-
-            <div className="mt-4 grid gap-2 rounded-lg bg-blue-50 p-3">
-              <input
-                className="rounded-md border border-blue-100 bg-white px-3 py-3 text-base font-bold"
-                value={todoTitle}
-                onChange={(event) => setTodoTitle(event.target.value)}
-                placeholder={todoText.newTitle}
-              />
-              <textarea
-                className="min-h-20 rounded-md border border-blue-100 bg-white px-3 py-3 text-base font-bold"
-                value={todoNote}
-                onChange={(event) => setTodoNote(event.target.value)}
-                placeholder={todoText.note}
-              />
-              <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-                <input
-                  className="rounded-md border border-blue-100 bg-white px-3 py-3 text-base font-bold"
-                  type="date"
-                  value={todoDueDate}
-                  onChange={(event) => setTodoDueDate(event.target.value)}
-                  aria-label={todoText.dueDate}
-                />
-                <button className="rounded-md bg-blue-700 px-5 py-3 text-base font-black text-white" type="button" onClick={addPersonalTodo}>
-                  {todoText.add}
-                </button>
-              </div>
-            </div>
-
-            <div className="mt-4 grid gap-3">
-              {pendingTodos.length ? pendingTodos.map(renderPersonalTodo) : <p className="rounded-lg bg-blue-50 p-4 text-lg font-black text-blue-800">{todoText.noPending}</p>}
-            </div>
-
-            <div className="mt-5">
-              <h4 className="text-2xl font-black text-ink">{todoText.doneRecord}</h4>
-              <div className="mt-3 grid gap-3">
-                {doneTodos.length ? doneTodos.map(renderPersonalTodo) : <p className="rounded-lg bg-stone-50 p-4 text-lg font-black text-stone-700">{todoText.noDone}</p>}
-              </div>
-            </div>
-          </div>
+          <MyWorkWall ownerId={personalTodoOwnerId} ownerName={teacher.name} officialTasks={myTasks} />
         </div>
 
         <div className="space-y-5">

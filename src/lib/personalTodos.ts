@@ -5,8 +5,15 @@ export type PersonalTodo = {
   ownerId: string;
   title: string;
   note: string;
+  content?: string;
   dueDate?: string;
-  status: "todo" | "done";
+  status: "todo" | "doing" | "done" | "archived";
+  color?: "yellow" | "pink" | "blue" | "green" | "purple";
+  x?: number;
+  y?: number;
+  rotation?: number;
+  completedAt?: string;
+  isPrivate?: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -16,8 +23,15 @@ type PersonalTodoRow = {
   owner_id: string;
   title: string;
   note: string | null;
+  content?: string | null;
   due_date: string | null;
   status: PersonalTodo["status"];
+  color?: PersonalTodo["color"] | null;
+  x?: number | null;
+  y?: number | null;
+  rotation?: number | null;
+  completed_at?: string | null;
+  is_private?: boolean | null;
   created_at: string;
   updated_at: string;
 };
@@ -34,8 +48,15 @@ function fromRow(row: PersonalTodoRow): PersonalTodo {
     ownerId: row.owner_id,
     title: row.title,
     note: row.note ?? "",
+    content: row.content ?? row.note ?? "",
     dueDate: row.due_date ?? undefined,
-    status: row.status,
+    status: row.status ?? "todo",
+    color: row.color ?? "yellow",
+    x: typeof row.x === "number" ? row.x : 80,
+    y: typeof row.y === "number" ? row.y : 80,
+    rotation: typeof row.rotation === "number" ? row.rotation : 0,
+    completedAt: row.completed_at ?? undefined,
+    isPrivate: row.is_private ?? true,
     createdAt: row.created_at?.slice(0, 10),
     updatedAt: row.updated_at?.slice(0, 10)
   };
@@ -47,8 +68,15 @@ function toRow(todo: PersonalTodo): PersonalTodoRow {
     owner_id: todo.ownerId,
     title: todo.title,
     note: todo.note || null,
+    content: todo.content ?? todo.note ?? null,
     due_date: todo.dueDate ?? null,
     status: todo.status,
+    color: todo.color ?? "yellow",
+    x: todo.x ?? 80,
+    y: todo.y ?? 80,
+    rotation: todo.rotation ?? 0,
+    completed_at: todo.completedAt ?? null,
+    is_private: todo.isPrivate ?? true,
     created_at: todo.createdAt,
     updated_at: todo.updatedAt
   };
@@ -91,7 +119,16 @@ export async function deletePersonalTodoCloud(todoId: string, ownerId: string) {
 export function mergePersonalTodos(localTodos: PersonalTodo[], cloudTodos: PersonalTodo[], ownerId: string) {
   const byId = new Map<string, PersonalTodo>();
   [...cloudTodos, ...localTodos].forEach((todo) => {
-    const normalized = { ...todo, ownerId: todo.ownerId || ownerId };
+    const normalized = {
+      ...todo,
+      ownerId: todo.ownerId || ownerId,
+      content: todo.content ?? todo.note ?? "",
+      color: todo.color ?? "yellow",
+      x: todo.x ?? 80,
+      y: todo.y ?? 80,
+      rotation: todo.rotation ?? 0,
+      isPrivate: todo.isPrivate ?? true
+    };
     const existing = byId.get(normalized.id);
     if (!existing || normalized.updatedAt.localeCompare(existing.updatedAt) >= 0) {
       byId.set(normalized.id, normalized);

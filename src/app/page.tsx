@@ -8,6 +8,7 @@ import { CommandBar } from "@/components/CommandBar";
 import { AdminTaskMap } from "@/components/AdminTaskMap";
 import { IdeaWall } from "@/components/IdeaWall";
 import { KanbanBoard } from "@/components/KanbanBoard";
+import { MyWorkWall } from "@/components/MyWorkWall";
 import { QuickCreatePanel } from "@/components/QuickCreatePanel";
 import { StickyWall } from "@/components/StickyWall";
 import { TeacherHome } from "@/components/TeacherHome";
@@ -33,12 +34,13 @@ import type { Priority, StickyColor } from "@/lib/types";
 
 const navItems = [
   ["工作總覽", "dashboard"],
+  ["我的工作牆", "my-work-wall"],
+  ["校內共創牆", "idea-wall"],
+  ["正式任務牆", "kanban"],
   ["任務與活動新增", "quick-create"],
   ["活動時間軸", "timeline"],
-  ["任務看板", "kanban"],
   ["人員分工", "workload"],
   ["交流便利貼", "sticky"],
-  ["想法牆", "idea-wall"],
   ["提醒中心", "dashboard"],
   ["活動模板", "templates"],
   ["教師端預覽", "teacher"],
@@ -1386,7 +1388,7 @@ export default function Home() {
             )}
           </div>
           <nav className="mt-6 space-y-2">
-            {(effectiveMode === "director" ? navItems : [["我的任務", "teacher-portal"], ["想法牆", "idea-wall"]]).map(([label, target]) => (
+            {(effectiveMode === "director" ? navItems : [["我的工作牆", "teacher-portal"], ["校內共創牆", "idea-wall"], ["正式任務牆", "teacher-portal"]]).map(([label, target]) => (
               <a
                 key={label}
                 href={`#${target}`}
@@ -1491,6 +1493,10 @@ export default function Home() {
               )
             ) : (
               <>
+                {currentSection === "my-work-wall" && (
+                  <MyWorkWall ownerId={currentUser.id} ownerName={currentUser.name} officialTasks={[]} />
+                )}
+
                 {currentSection === "dashboard" && (
                   <AdminTaskMap
                     tasks={tasks}
