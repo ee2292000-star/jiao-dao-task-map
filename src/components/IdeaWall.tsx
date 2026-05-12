@@ -153,18 +153,31 @@ function autoResizeTextArea(event: FormEvent<HTMLTextAreaElement>) {
 
 function IdeaStickyNode({ data }: NodeProps<IdeaFlowNode>) {
   const { idea, colorClass, onSelect } = data;
+  const [isHovered, setIsHovered] = useState(false);
+  const cardTransform = isHovered
+    ? `rotate(${idea.rotation}deg) translateY(-2px) scale(1.02)`
+    : `rotate(${idea.rotation}deg)`;
 
   return (
     <div
-      className={`w-64 cursor-grab rounded-sm border p-4 text-left shadow-lg transition hover:-translate-y-1 hover:shadow-xl active:cursor-grabbing ${colorClass} ${idea.pinned ? "ring-4 ring-amber-300" : ""}`}
+      className="w-64 cursor-grab text-left active:cursor-grabbing"
       role="button"
       tabIndex={0}
       onClick={() => onSelect(idea.id)}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") onSelect(idea.id);
       }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
-      <div style={{ rotate: `${idea.rotation}deg` }}>
+      <div
+        className={`sticky-note-card rounded-sm border p-4 shadow-lg transition-transform duration-150 ease-out hover:shadow-xl ${colorClass} ${idea.pinned ? "ring-4 ring-amber-300" : ""}`}
+        style={{
+          transform: cardTransform,
+          transformOrigin: "center center"
+        }}
+      >
+        <div className="sticky-note-content">
         <p className="text-xs font-black text-stone-600">
           {idea.authorName} / {idea.createdAt}
         </p>
@@ -184,6 +197,7 @@ function IdeaStickyNode({ data }: NodeProps<IdeaFlowNode>) {
           <span>
             {text.comments} {idea.comments.length}
           </span>
+        </div>
         </div>
       </div>
     </div>
