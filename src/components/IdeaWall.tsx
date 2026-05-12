@@ -1,7 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { ChangeEvent, FormEvent, MouseEvent, PointerEvent } from "react";
+import type { ChangeEvent, FormEvent, MouseEvent as ReactMouseEvent } from "react";
+import {
+  Background,
+  Controls,
+  ReactFlow,
+  type Node,
+  type NodeProps,
+  type NodeTypes,
+  type ReactFlowInstance
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
 import {
   defaultIdeaTopic,
   deleteIdeaCloud,
@@ -24,38 +34,49 @@ type IdeaWallProps = {
   teachers?: Teacher[];
 };
 
+type IdeaNodeData = {
+  idea: IdeaNote;
+  colorClass: string;
+  onSelect: (ideaId: string) => void;
+} & Record<string, unknown>;
+
+type IdeaFlowNode = Node<IdeaNodeData, "ideaSticky">;
+
 const text = {
-  title: "\u60f3\u6cd5\u7246\uff0f\u5171\u5275\u4fbf\u5229\u8cbc",
-  topicPlaceholder: "\u4f8b\u5982\uff1a\u7562\u696d\u5178\u79ae\u4e3b\u984c\u52df\u96c6",
-  saveTopic: "\u66f4\u65b0\u4e3b\u984c",
-  topicSaved: "\u4e3b\u984c\u5df2\u66f4\u65b0",
-  archiveTopic: "\u5c01\u5b58\u4e3b\u984c",
-  reopenTopic: "\u91cd\u958b\u4e3b\u984c",
-  loading: "\u6b63\u5728\u8f09\u5165\u6700\u65b0\u4fbf\u5229\u8cbc...",
-  syncing: "\u540c\u6b65\u4e2d...",
-  cloudReady: "\u5df2\u9023\u7dda\u96f2\u7aef\uff0c\u5171\u5275\u4fbf\u5229\u8cbc\u4ee5\u8cc7\u6599\u5eab\u70ba\u6e96\u3002",
-  cloudFallback: "\u96f2\u7aef\u540c\u6b65\u5c1a\u672a\u555f\u7528\uff0c\u76ee\u524d\u50c5\u4fdd\u7559\u5728\u9019\u53f0\u96fb\u8166\u3002",
-  cloudSavingFailed: "\u96f2\u7aef\u66ab\u6642\u7121\u6cd5\u5132\u5b58\uff0c\u5df2\u91cd\u65b0\u8f09\u5165\u6700\u65b0\u8cc7\u6599\u3002",
-  addNote: "\u65b0\u589e\u4fbf\u5229\u8cbc",
-  titleInput: "\u6a19\u984c\uff08\u53ef\u9078\uff09",
-  bodyInput: "\u60f3\u6cd5\u5167\u5bb9\uff0cEnter \u53ef\u63db\u884c",
-  search: "\u641c\u5c0b\u60f3\u6cd5",
-  noIdeas: "\u96d9\u64ca\u767d\u677f\u7a7a\u767d\u8655\uff0c\u8cbc\u4e0a\u7b2c\u4e00\u5f35\u60f3\u6cd5\u3002",
-  support: "\u652f\u6301",
-  supported: "\u5df2\u652f\u6301",
-  comments: "\u7559\u8a00",
-  commentPlaceholder: "\u88dc\u5145\u4e00\u500b\u60f3\u6cd5\u6216\u56de\u61c9",
-  sendComment: "\u7559\u8a00",
-  edit: "\u7de8\u8f2f",
-  save: "\u5132\u5b58",
-  close: "\u95dc\u9589",
-  remove: "\u522a\u9664",
-  pin: "\u7f6e\u9802",
-  unpin: "\u53d6\u6d88\u7f6e\u9802",
-  pinned: "\u7f6e\u9802",
-  moveMode: "\u79fb\u52d5\u6a21\u5f0f",
-  untitled: "\u672a\u547d\u540d\u60f3\u6cd5",
-  confirmDelete: "\u78ba\u5b9a\u8981\u522a\u9664\u9019\u5f35\u60f3\u6cd5\u4fbf\u5229\u8cbc\u55ce\uff1f"
+  title: "校內共創牆",
+  topicPlaceholder: "共創主題，例如：畢業典禮主題募集",
+  saveTopic: "更新主題",
+  topicSaved: "主題已更新",
+  archiveTopic: "封存主題",
+  reopenTopic: "重新開啟",
+  loading: "正在載入共創便利貼...",
+  syncing: "同步中...",
+  cloudReady: "已連線 Supabase，便利貼會同步到其他裝置。",
+  cloudFallback: "雲端同步暫時未啟用，將使用本機資料。",
+  cloudSavingFailed: "雲端同步失敗，已重新載入最新資料。",
+  addNote: "新增便利貼",
+  titleInput: "便利貼標題（可選）",
+  bodyInput: "想法內容，按 Enter 可換行",
+  search: "搜尋便利貼",
+  noIdeas: "目前還沒有便利貼。雙擊白板空白處，或在上方輸入內容新增。",
+  support: "支持",
+  supported: "已支持",
+  comments: "留言",
+  commentPlaceholder: "補充一句想法...",
+  sendComment: "留言",
+  edit: "編輯",
+  save: "儲存",
+  close: "關閉",
+  remove: "刪除",
+  pin: "置頂",
+  unpin: "取消置頂",
+  pinned: "置頂",
+  untitled: "未命名想法",
+  confirmDelete: "確定要刪除此便利貼嗎？此動作無法復原。",
+  visibilityAll: "全體教師",
+  visibilityDirector: "主任",
+  visibilityTeachers: "指定教師",
+  chooseTeacher: "選擇教師"
 };
 
 const colorClasses: Record<IdeaColor, string> = {
@@ -68,11 +89,11 @@ const colorClasses: Record<IdeaColor, string> = {
 
 const colorOptions: IdeaColor[] = ["yellow", "pink", "blue", "green", "purple"];
 const colorLabels: Record<IdeaColor, string> = {
-  yellow: "\u9ec3\u8272\u9748\u611f",
-  pink: "\u7c89\u8272\u8a0e\u8ad6",
-  blue: "\u85cd\u8272\u60f3\u6cd5",
-  green: "\u7da0\u8272\u88dc\u5145",
-  purple: "\u7d2b\u8272\u91cd\u9ede"
+  yellow: "黃色提醒",
+  pink: "粉色討論",
+  blue: "藍色想法",
+  green: "綠色整理",
+  purple: "紫色靈感"
 };
 
 function todayString() {
@@ -107,9 +128,9 @@ function clearStoredIdeaWall() {
 function normalizeIdea(idea: IdeaNote, index: number): IdeaNote {
   return {
     ...idea,
-    x: Number.isFinite(idea.x) ? idea.x : 70 + (index % 4) * 250,
-    y: Number.isFinite(idea.y) ? idea.y : 80 + Math.floor(index / 4) * 210,
-    rotation: Number.isFinite(idea.rotation) ? idea.rotation : [-3, 2, -1, 3][index % 4],
+    x: Number.isFinite(idea.x) ? idea.x : 70 + (index % 4) * 260,
+    y: Number.isFinite(idea.y) ? idea.y : 80 + Math.floor(index / 4) * 220,
+    rotation: Number.isFinite(idea.rotation) ? idea.rotation : [-2, 1, -1, 2][index % 4],
     color: (idea.color as string) === "orange" ? "purple" : idea.color,
     visibility: idea.visibility ?? "all",
     targetTeacherIds: idea.targetTeacherIds ?? [],
@@ -127,6 +148,49 @@ function autoResizeTextArea(event: FormEvent<HTMLTextAreaElement>) {
   element.style.height = "auto";
   element.style.height = `${element.scrollHeight}px`;
 }
+
+function IdeaStickyNode({ data }: NodeProps<IdeaFlowNode>) {
+  const { idea, colorClass, onSelect } = data;
+
+  return (
+    <div
+      className={`w-64 cursor-grab rounded-sm border p-4 text-left shadow-lg transition hover:-translate-y-1 hover:shadow-xl active:cursor-grabbing ${colorClass} ${idea.pinned ? "ring-4 ring-amber-300" : ""}`}
+      role="button"
+      tabIndex={0}
+      onClick={() => onSelect(idea.id)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") onSelect(idea.id);
+      }}
+    >
+      <div style={{ rotate: `${idea.rotation}deg` }}>
+        <p className="text-xs font-black text-stone-600">
+          {idea.authorName} / {idea.createdAt}
+        </p>
+        {idea.pinned && (
+          <span className="mt-2 inline-block rounded-full bg-white px-2 py-1 text-xs font-black text-forest-800">
+            {text.pinned}
+          </span>
+        )}
+        {idea.title && <h3 className="mt-2 line-clamp-2 text-xl font-black leading-tight text-ink">{idea.title}</h3>}
+        <p className="mt-2 line-clamp-6 whitespace-pre-wrap break-words text-base font-bold leading-relaxed text-ink">
+          {idea.body}
+        </p>
+        <div className="mt-3 flex gap-2 text-sm font-black text-forest-800">
+          <span>
+            {text.support} {idea.supportUserIds.length}
+          </span>
+          <span>
+            {text.comments} {idea.comments.length}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const nodeTypes: NodeTypes = {
+  ideaSticky: IdeaStickyNode
+};
 
 export function IdeaWall({ currentUserId, currentUserName, currentUserRole, teachers = [] }: IdeaWallProps) {
   const [ideas, setIdeas] = useState<IdeaNote[]>([]);
@@ -150,23 +214,54 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole, teac
   const [syncNotice, setSyncNotice] = useState(isIdeaWallCloudAvailable() ? text.loading : text.cloudFallback);
   const [isLoading, setIsLoading] = useState(isIdeaWallCloudAvailable());
   const [isSyncing, setIsSyncing] = useState(false);
-  const [moveMode, setMoveMode] = useState(false);
   const [draftPosition, setDraftPosition] = useState({ x: 90, y: 90 });
-  const [dragging, setDragging] = useState<{ id: string; startX: number; startY: number; originalX: number; originalY: number } | null>(null);
+  const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<IdeaFlowNode> | null>(null);
 
   const isAdmin = currentUserRole === "admin";
   const currentActorId = currentUserId || `name:${currentUserName}`;
   const selectedIdea = ideas.find((idea) => idea.id === selectedId);
+
+  function isIdeaOwner(idea: IdeaNote) {
+    if (idea.authorId) return idea.authorId === currentActorId || idea.authorId === currentUserId;
+    return Boolean(idea.authorName && idea.authorName === currentUserName);
+  }
+
+  function canManage(idea: IdeaNote) {
+    return isAdmin || isIdeaOwner(idea);
+  }
 
   const visibleIdeas = useMemo(() => {
     const term = search.trim().toLowerCase();
     return sortIdeas(
       ideas
         .filter((idea) => !idea.archived)
-        .filter((idea) => isAdmin || isIdeaOwner(idea) || idea.visibility === "all" || idea.targetTeacherIds.includes(currentActorId) || idea.targetTeacherIds.includes(currentUserId))
+        .filter(
+          (idea) =>
+            isAdmin ||
+            isIdeaOwner(idea) ||
+            idea.visibility === "all" ||
+            idea.targetTeacherIds.includes(currentActorId) ||
+            idea.targetTeacherIds.includes(currentUserId)
+        )
         .filter((idea) => !term || `${idea.title} ${idea.body} ${idea.authorName}`.toLowerCase().includes(term))
     );
   }, [currentActorId, currentUserId, currentUserName, ideas, isAdmin, search]);
+
+  const flowNodes = useMemo<IdeaFlowNode[]>(
+    () =>
+      visibleIdeas.map((idea) => ({
+        id: idea.id,
+        type: "ideaSticky",
+        position: { x: idea.x, y: idea.y },
+        data: {
+          idea,
+          colorClass: colorClasses[idea.color],
+          onSelect: setSelectedId
+        },
+        draggable: true
+      })),
+    [visibleIdeas]
+  );
 
   async function refreshCloudIdeas() {
     if (!isIdeaWallCloudAvailable()) return;
@@ -252,7 +347,10 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole, teac
 
   function persistIdea(idea: IdeaNote) {
     if (!isIdeaWallCloudAvailable()) {
-      writeJson(ideaWallStorageKey, sortIdeas(ideas.map((item) => item.id === idea.id ? idea : item)));
+      writeJson(
+        ideaWallStorageKey,
+        sortIdeas(ideas.map((item) => (item.id === idea.id ? idea : item)))
+      );
       return;
     }
     setIsSyncing(true);
@@ -285,7 +383,7 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole, teac
       color,
       x: Math.max(20, position.x),
       y: Math.max(20, position.y),
-      rotation: Math.round(Math.random() * 6 - 3),
+      rotation: Math.round(Math.random() * 4 - 2),
       visibility,
       targetTeacherIds: visibility === "teachers" && targetTeacherId ? [targetTeacherId] : [],
       supportUserIds: [],
@@ -303,33 +401,21 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole, teac
     setSelectedId(idea.id);
   }
 
-  function startDrag(event: PointerEvent<HTMLButtonElement>, idea: IdeaNote) {
-    if (!moveMode && event.pointerType === "touch") return;
-    event.currentTarget.setPointerCapture(event.pointerId);
-    setDragging({ id: idea.id, startX: event.clientX, startY: event.clientY, originalX: idea.x, originalY: idea.y });
-  }
-
-  function moveDrag(event: PointerEvent<HTMLButtonElement>) {
-    if (!dragging) return;
+  function handleNodeDragStop(_event: ReactMouseEvent, node: IdeaFlowNode) {
     const nextIdeas = ideas.map((idea) =>
-      idea.id === dragging.id
-        ? { ...idea, x: Math.max(0, dragging.originalX + event.clientX - dragging.startX), y: Math.max(0, dragging.originalY + event.clientY - dragging.startY), updatedAt: todayString() }
+      idea.id === node.id
+        ? { ...idea, x: Math.round(node.position.x), y: Math.round(node.position.y), updatedAt: todayString() }
         : idea
     );
     saveLocalIdeas(nextIdeas);
-  }
-
-  function endDrag() {
-    if (!dragging) return;
-    const changedIdea = ideas.find((idea) => idea.id === dragging.id);
+    const changedIdea = nextIdeas.find((idea) => idea.id === node.id);
     if (changedIdea) persistIdea(changedIdea);
-    setDragging(null);
   }
 
-  function handleBoardDoubleClick(event: MouseEvent<HTMLDivElement>) {
-    if (event.target !== event.currentTarget) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    setDraftPosition({ x: event.clientX - rect.left, y: event.clientY - rect.top });
+  function handlePaneClick(event: ReactMouseEvent) {
+    if (event.detail !== 2) return;
+    const position = flowInstance?.screenToFlowPosition({ x: event.clientX, y: event.clientY }) ?? { x: 90, y: 90 };
+    setDraftPosition(position);
     setTitle("");
     setBody("");
   }
@@ -338,7 +424,13 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole, teac
     const nextIdeas = ideas.map((idea) => {
       if (idea.id !== ideaId) return idea;
       const supported = idea.supportUserIds.includes(currentActorId);
-      return { ...idea, supportUserIds: supported ? idea.supportUserIds.filter((id) => id !== currentActorId) : [...idea.supportUserIds, currentActorId], updatedAt: todayString() };
+      return {
+        ...idea,
+        supportUserIds: supported
+          ? idea.supportUserIds.filter((id) => id !== currentActorId)
+          : [...idea.supportUserIds, currentActorId],
+        updatedAt: todayString()
+      };
     });
     saveChangedIdea(ideaId, nextIdeas);
   }
@@ -346,8 +438,16 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole, teac
   function addComment(ideaId: string) {
     const nextBody = commentDrafts[ideaId]?.trim();
     if (!nextBody) return;
-    const comment: IdeaComment = { id: `idea-comment-${Date.now()}`, authorId: currentActorId, authorName: currentUserName, body: nextBody, createdAt: todayString() };
-    const nextIdeas = ideas.map((idea) => idea.id === ideaId ? { ...idea, comments: [...idea.comments, comment], updatedAt: todayString() } : idea);
+    const comment: IdeaComment = {
+      id: `idea-comment-${Date.now()}`,
+      authorId: currentActorId,
+      authorName: currentUserName,
+      body: nextBody,
+      createdAt: todayString()
+    };
+    const nextIdeas = ideas.map((idea) =>
+      idea.id === ideaId ? { ...idea, comments: [...idea.comments, comment], updatedAt: todayString() } : idea
+    );
     saveChangedIdea(ideaId, nextIdeas);
     setCommentDrafts((current) => ({ ...current, [ideaId]: "" }));
   }
@@ -403,17 +503,10 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole, teac
   }
 
   function togglePin(ideaId: string) {
-    const nextIdeas = ideas.map((idea) => idea.id === ideaId ? { ...idea, pinned: !idea.pinned, updatedAt: todayString() } : idea);
+    const nextIdeas = ideas.map((idea) =>
+      idea.id === ideaId ? { ...idea, pinned: !idea.pinned, updatedAt: todayString() } : idea
+    );
     saveChangedIdea(ideaId, nextIdeas);
-  }
-
-  function isIdeaOwner(idea: IdeaNote) {
-    if (idea.authorId) return idea.authorId === currentActorId || idea.authorId === currentUserId;
-    return Boolean(idea.authorName && idea.authorName === currentUserName);
-  }
-
-  function canManage(idea: IdeaNote) {
-    return isAdmin || isIdeaOwner(idea);
   }
 
   function handleBodyChange(event: ChangeEvent<HTMLTextAreaElement>) {
@@ -423,18 +516,45 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole, teac
   return (
     <div className="space-y-4" id="idea-wall">
       <section className="rounded-lg border border-forest-100 bg-white p-4 shadow-soft">
-        <div className="grid gap-3 xl:grid-cols-[1.2fr_auto_auto_auto_auto] xl:items-center">
+        <div className="grid gap-3 xl:grid-cols-[1.2fr_auto_auto_260px] xl:items-center">
           <div>
             <p className="text-lg font-black text-forest-700">{text.title}</p>
-            <input className="mt-2 w-full rounded-md border border-forest-100 bg-warm px-3 py-3 text-2xl font-black text-ink" value={topicDraft} onChange={(event) => setTopicDraft(event.target.value)} placeholder={text.topicPlaceholder} disabled={!isAdmin} />
+            <input
+              className="mt-2 w-full rounded-md border border-forest-100 bg-warm px-3 py-3 text-2xl font-black text-ink"
+              value={topicDraft}
+              onChange={(event) => setTopicDraft(event.target.value)}
+              placeholder={text.topicPlaceholder}
+              disabled={!isAdmin}
+            />
           </div>
-          {isAdmin && <button className="rounded-md bg-forest-700 px-4 py-3 text-base font-black text-white" type="button" onClick={updateTopicTitle}>{text.saveTopic}</button>}
-          {isAdmin && <button className="rounded-md bg-rice px-4 py-3 text-base font-black text-ink" type="button" onClick={() => void saveTopic({ ...topic, archived: !topic.archived })}>{topic.archived ? text.reopenTopic : text.archiveTopic}</button>}
-          <button className={`rounded-md px-4 py-3 text-base font-black ${moveMode ? "bg-blue-100 text-blue-900" : "bg-rice text-ink"}`} type="button" onClick={() => setMoveMode((value) => !value)}>{text.moveMode}</button>
-          <input className="rounded-md border border-forest-100 bg-warm px-3 py-3 text-base font-bold" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text.search} />
+          {isAdmin && (
+            <button className="rounded-md bg-forest-700 px-4 py-3 text-base font-black text-white" type="button" onClick={updateTopicTitle}>
+              {text.saveTopic}
+            </button>
+          )}
+          {isAdmin && (
+            <button
+              className="rounded-md bg-rice px-4 py-3 text-base font-black text-ink"
+              type="button"
+              onClick={() => void saveTopic({ ...topic, archived: !topic.archived })}
+            >
+              {topic.archived ? text.reopenTopic : text.archiveTopic}
+            </button>
+          )}
+          <input
+            className="rounded-md border border-forest-100 bg-warm px-3 py-3 text-base font-bold"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder={text.search}
+          />
         </div>
         <div className="mt-3 grid gap-2 lg:grid-cols-[1fr_1.7fr_150px_170px_180px_auto]">
-          <input className="rounded-md border border-forest-100 bg-warm px-3 py-3 text-base font-bold" value={title} onChange={(event) => setTitle(event.target.value)} placeholder={text.titleInput} />
+          <input
+            className="rounded-md border border-forest-100 bg-warm px-3 py-3 text-base font-bold"
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder={text.titleInput}
+          />
           <textarea
             className="min-h-20 resize-none overflow-hidden rounded-md border border-forest-100 bg-warm px-3 py-3 text-base font-bold leading-relaxed whitespace-pre-wrap break-words"
             value={body}
@@ -443,19 +563,45 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole, teac
             placeholder={text.bodyInput}
             rows={3}
           />
-          <select className="rounded-md border border-forest-100 bg-warm px-3 py-3 text-base font-black" value={color} onChange={(event) => setColor(event.target.value as IdeaColor)} aria-label="便利貼顏色">
-            {colorOptions.map((item) => <option key={item} value={item}>{colorLabels[item]}</option>)}
+          <select
+            className="rounded-md border border-forest-100 bg-warm px-3 py-3 text-base font-black"
+            value={color}
+            onChange={(event) => setColor(event.target.value as IdeaColor)}
+            aria-label="便利貼顏色"
+          >
+            {colorOptions.map((item) => (
+              <option key={item} value={item}>
+                {colorLabels[item]}
+              </option>
+            ))}
           </select>
-          <select className="rounded-md border border-forest-100 bg-warm px-3 py-3 text-base font-black" value={visibility} onChange={(event) => setVisibility(event.target.value as IdeaVisibility)} aria-label="可見對象">
-            <option value="all">全體教師</option>
-            <option value="director">主任</option>
-            <option value="teachers">指定教師</option>
+          <select
+            className="rounded-md border border-forest-100 bg-warm px-3 py-3 text-base font-black"
+            value={visibility}
+            onChange={(event) => setVisibility(event.target.value as IdeaVisibility)}
+            aria-label="可見對象"
+          >
+            <option value="all">{text.visibilityAll}</option>
+            <option value="director">{text.visibilityDirector}</option>
+            <option value="teachers">{text.visibilityTeachers}</option>
           </select>
-          <select className="rounded-md border border-forest-100 bg-warm px-3 py-3 text-base font-black" value={targetTeacherId} onChange={(event) => setTargetTeacherId(event.target.value)} disabled={visibility !== "teachers"} aria-label="指定教師">
-            <option value="">選擇教師</option>
-            {teachers.map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.name}</option>)}
+          <select
+            className="rounded-md border border-forest-100 bg-warm px-3 py-3 text-base font-black"
+            value={targetTeacherId}
+            onChange={(event) => setTargetTeacherId(event.target.value)}
+            disabled={visibility !== "teachers"}
+            aria-label="指定教師"
+          >
+            <option value="">{text.chooseTeacher}</option>
+            {teachers.map((teacher) => (
+              <option key={teacher.id} value={teacher.id}>
+                {teacher.name}
+              </option>
+            ))}
           </select>
-          <button className="rounded-md bg-forest-700 px-4 py-3 text-base font-black text-white" type="button" onClick={() => createIdea()}>{text.addNote}</button>
+          <button className="rounded-md bg-forest-700 px-4 py-3 text-base font-black text-white" type="button" onClick={() => createIdea()}>
+            {text.addNote}
+          </button>
         </div>
         <div className="mt-3 flex flex-wrap gap-2 text-base font-black">
           {topicNotice && <span className="rounded-md bg-forest-50 px-3 py-2 text-forest-800">{topicNotice}</span>}
@@ -463,54 +609,85 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole, teac
         </div>
       </section>
 
-      <section className="relative min-h-[720px] overflow-auto rounded-lg border border-forest-100 bg-[#fffdf5] shadow-soft">
-        <div className="relative min-h-[980px] min-w-[1100px] bg-[radial-gradient(circle,rgba(47,93,80,.16)_1px,transparent_1px)] bg-[size:24px_24px] p-6" onDoubleClick={handleBoardDoubleClick}>
-          {isLoading && <p className="pointer-events-none absolute left-8 top-8 rounded-lg bg-white/90 p-5 text-2xl font-black text-forest-800">{text.loading}</p>}
-          {!isLoading && !visibleIdeas.length && <p className="pointer-events-none absolute left-8 top-8 rounded-lg bg-white/80 p-5 text-2xl font-black text-forest-800">{text.noIdeas}</p>}
-          {visibleIdeas.map((idea) => (
-            <button
-              key={idea.id}
-              className={`absolute w-56 touch-none rounded-sm border p-4 text-left shadow-lg transition hover:z-20 hover:shadow-xl ${colorClasses[idea.color]} ${idea.pinned ? "ring-4 ring-amber-300" : ""}`}
-              style={{ left: idea.x, top: idea.y, transform: `rotate(${idea.rotation}deg)` }}
-              type="button"
-              onClick={() => setSelectedId(idea.id)}
-              onPointerDown={(event) => startDrag(event, idea)}
-              onPointerMove={moveDrag}
-              onPointerUp={endDrag}
-            >
-              <p className="text-xs font-black text-stone-600">{idea.authorName} / {idea.createdAt}</p>
-              {idea.pinned && <span className="mt-2 inline-block rounded-full bg-white px-2 py-1 text-xs font-black text-forest-800">{text.pinned}</span>}
-              {idea.title && <h3 className="mt-2 line-clamp-2 text-xl font-black leading-tight text-ink">{idea.title}</h3>}
-              <p className="mt-2 line-clamp-5 whitespace-pre-wrap break-words text-base font-bold leading-relaxed text-ink">{idea.body}</p>
-              <div className="mt-3 flex gap-2 text-sm font-black text-forest-800">
-                <span>{text.support} {idea.supportUserIds.length}</span>
-                <span>{text.comments} {idea.comments.length}</span>
-              </div>
-            </button>
-          ))}
-        </div>
+      <section className="relative h-[78vh] min-h-[640px] overflow-hidden rounded-lg border border-forest-100 bg-[#fffdf5] shadow-soft">
+        {isLoading && (
+          <p className="absolute left-8 top-8 z-10 rounded-lg bg-white/90 p-5 text-2xl font-black text-forest-800 shadow-soft">{text.loading}</p>
+        )}
+        {!isLoading && !visibleIdeas.length && (
+          <p className="absolute left-8 top-8 z-10 max-w-xl rounded-lg bg-white/80 p-5 text-2xl font-black text-forest-800 shadow-soft">
+            {text.noIdeas}
+          </p>
+        )}
+        <ReactFlow<IdeaFlowNode>
+          nodes={flowNodes}
+          edges={[]}
+          nodeTypes={nodeTypes}
+          onInit={setFlowInstance}
+          onNodeDragStop={handleNodeDragStop}
+          onPaneClick={handlePaneClick}
+          fitView
+          minZoom={0.25}
+          maxZoom={2}
+          panOnDrag
+          zoomOnScroll
+          zoomOnPinch
+          nodesDraggable
+          nodesConnectable={false}
+          elementsSelectable
+          proOptions={{ hideAttribution: true }}
+          className="bg-[#fffdf5]"
+        >
+          <Background color="rgba(47,93,80,.22)" gap={24} size={1.2} />
+          <Controls showInteractive={false} />
+        </ReactFlow>
       </section>
 
       {selectedIdea && (
         <aside className="fixed inset-y-0 right-0 z-50 w-full overflow-y-auto border-l border-forest-100 bg-white p-5 shadow-2xl md:max-w-xl">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-lg font-black text-forest-700">{selectedIdea.authorName} / {selectedIdea.createdAt}</p>
+              <p className="text-lg font-black text-forest-700">
+                {selectedIdea.authorName} / {selectedIdea.createdAt}
+              </p>
               <h3 className="mt-1 text-3xl font-black text-ink">{selectedIdea.title || text.untitled}</h3>
             </div>
-            <button className="rounded-md bg-rice px-3 py-2 text-base font-black" type="button" onClick={() => setSelectedId("")}>{text.close}</button>
+            <button className="rounded-md bg-rice px-3 py-2 text-base font-black" type="button" onClick={() => setSelectedId("")}>
+              {text.close}
+            </button>
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
-            <button className={`rounded-md px-3 py-2 text-base font-black ${selectedIdea.supportUserIds.includes(currentActorId) ? "bg-forest-700 text-white" : "bg-rice text-forest-800"}`} type="button" onClick={() => toggleSupport(selectedIdea.id)}>{selectedIdea.supportUserIds.includes(currentActorId) ? text.supported : text.support} {selectedIdea.supportUserIds.length}</button>
-            {isAdmin && <button className="rounded-md bg-rice px-3 py-2 text-base font-black" type="button" onClick={() => togglePin(selectedIdea.id)}>{selectedIdea.pinned ? text.unpin : text.pin}</button>}
-            {canManage(selectedIdea) && <button className="rounded-md bg-rice px-3 py-2 text-base font-black" type="button" onClick={() => startEdit(selectedIdea)}>{text.edit}</button>}
-            {canManage(selectedIdea) && <button className="rounded-md bg-red-50 px-3 py-2 text-base font-black text-red-700" type="button" onClick={() => void deleteIdea(selectedIdea.id)}>{text.remove}</button>}
+            <button
+              className={`rounded-md px-3 py-2 text-base font-black ${selectedIdea.supportUserIds.includes(currentActorId) ? "bg-forest-700 text-white" : "bg-rice text-forest-800"}`}
+              type="button"
+              onClick={() => toggleSupport(selectedIdea.id)}
+            >
+              {selectedIdea.supportUserIds.includes(currentActorId) ? text.supported : text.support} {selectedIdea.supportUserIds.length}
+            </button>
+            {isAdmin && (
+              <button className="rounded-md bg-rice px-3 py-2 text-base font-black" type="button" onClick={() => togglePin(selectedIdea.id)}>
+                {selectedIdea.pinned ? text.unpin : text.pin}
+              </button>
+            )}
+            {canManage(selectedIdea) && (
+              <button className="rounded-md bg-rice px-3 py-2 text-base font-black" type="button" onClick={() => startEdit(selectedIdea)}>
+                {text.edit}
+              </button>
+            )}
+            {canManage(selectedIdea) && (
+              <button className="rounded-md bg-red-50 px-3 py-2 text-base font-black text-red-700" type="button" onClick={() => void deleteIdea(selectedIdea.id)}>
+                {text.remove}
+              </button>
+            )}
           </div>
 
           {editingId === selectedIdea.id ? (
             <div className="mt-4 grid gap-3">
-              <input className="rounded-md border border-forest-100 bg-warm px-3 py-3 text-base font-bold" value={editTitle} onChange={(event) => setEditTitle(event.target.value)} />
+              <input
+                className="rounded-md border border-forest-100 bg-warm px-3 py-3 text-base font-bold"
+                value={editTitle}
+                onChange={(event) => setEditTitle(event.target.value)}
+              />
               <textarea
                 className="min-h-40 resize-none overflow-hidden rounded-md border border-forest-100 bg-warm px-3 py-3 text-base font-bold leading-relaxed whitespace-pre-wrap break-words"
                 value={editBody}
@@ -519,36 +696,75 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole, teac
                 rows={5}
               />
               <div className="grid gap-3 sm:grid-cols-3">
-                <select className="rounded-md border border-forest-100 bg-warm px-3 py-3 text-base font-black" value={editColor} onChange={(event) => setEditColor(event.target.value as IdeaColor)} aria-label="編輯便利貼顏色">
-                  {colorOptions.map((item) => <option key={item} value={item}>{colorLabels[item]}</option>)}
+                <select
+                  className="rounded-md border border-forest-100 bg-warm px-3 py-3 text-base font-black"
+                  value={editColor}
+                  onChange={(event) => setEditColor(event.target.value as IdeaColor)}
+                  aria-label="編輯便利貼顏色"
+                >
+                  {colorOptions.map((item) => (
+                    <option key={item} value={item}>
+                      {colorLabels[item]}
+                    </option>
+                  ))}
                 </select>
-                <select className="rounded-md border border-forest-100 bg-warm px-3 py-3 text-base font-black" value={editVisibility} onChange={(event) => setEditVisibility(event.target.value as IdeaVisibility)} aria-label="編輯可見對象">
-                  <option value="all">全體教師</option>
-                  <option value="director">主任</option>
-                  <option value="teachers">指定教師</option>
+                <select
+                  className="rounded-md border border-forest-100 bg-warm px-3 py-3 text-base font-black"
+                  value={editVisibility}
+                  onChange={(event) => setEditVisibility(event.target.value as IdeaVisibility)}
+                  aria-label="編輯可見對象"
+                >
+                  <option value="all">{text.visibilityAll}</option>
+                  <option value="director">{text.visibilityDirector}</option>
+                  <option value="teachers">{text.visibilityTeachers}</option>
                 </select>
-                <select className="rounded-md border border-forest-100 bg-warm px-3 py-3 text-base font-black" value={editTargetTeacherId} onChange={(event) => setEditTargetTeacherId(event.target.value)} disabled={editVisibility !== "teachers"} aria-label="編輯指定教師">
-                  <option value="">選擇教師</option>
-                  {teachers.map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.name}</option>)}
+                <select
+                  className="rounded-md border border-forest-100 bg-warm px-3 py-3 text-base font-black"
+                  value={editTargetTeacherId}
+                  onChange={(event) => setEditTargetTeacherId(event.target.value)}
+                  disabled={editVisibility !== "teachers"}
+                  aria-label="編輯指定教師"
+                >
+                  <option value="">{text.chooseTeacher}</option>
+                  {teachers.map((teacher) => (
+                    <option key={teacher.id} value={teacher.id}>
+                      {teacher.name}
+                    </option>
+                  ))}
                 </select>
               </div>
-              <button className="rounded-md bg-forest-700 px-4 py-3 text-base font-black text-white" type="button" onClick={() => saveEdit(selectedIdea.id)}>{text.save}</button>
+              <button className="rounded-md bg-forest-700 px-4 py-3 text-base font-black text-white" type="button" onClick={() => saveEdit(selectedIdea.id)}>
+                {text.save}
+              </button>
             </div>
           ) : (
-            <p className="mt-4 whitespace-pre-wrap break-words rounded-lg bg-rice p-4 text-xl font-bold leading-relaxed text-ink">{selectedIdea.body}</p>
+            <p className="mt-4 whitespace-pre-wrap break-words rounded-lg bg-rice p-4 text-xl font-bold leading-relaxed text-ink">
+              {selectedIdea.body}
+            </p>
           )}
 
           <div className="mt-5 space-y-3">
-            <p className="text-xl font-black text-ink">{text.comments} {selectedIdea.comments.length}</p>
+            <p className="text-xl font-black text-ink">
+              {text.comments} {selectedIdea.comments.length}
+            </p>
             {selectedIdea.comments.map((comment) => (
               <div key={comment.id} className="rounded-lg bg-forest-50 p-3">
-                <p className="text-sm font-black text-stone-600">{comment.authorName} / {comment.createdAt}</p>
+                <p className="text-sm font-black text-stone-600">
+                  {comment.authorName} / {comment.createdAt}
+                </p>
                 <p className="whitespace-pre-wrap break-words text-base font-bold text-ink">{comment.body}</p>
               </div>
             ))}
             <div className="flex gap-2">
-              <input className="min-w-0 flex-1 rounded-md border border-forest-100 bg-warm px-3 py-3 text-base font-bold" value={commentDrafts[selectedIdea.id] ?? ""} onChange={(event) => setCommentDrafts((current) => ({ ...current, [selectedIdea.id]: event.target.value }))} placeholder={text.commentPlaceholder} />
-              <button className="rounded-md bg-forest-700 px-4 py-3 text-base font-black text-white" type="button" onClick={() => addComment(selectedIdea.id)}>{text.sendComment}</button>
+              <input
+                className="min-w-0 flex-1 rounded-md border border-forest-100 bg-warm px-3 py-3 text-base font-bold"
+                value={commentDrafts[selectedIdea.id] ?? ""}
+                onChange={(event) => setCommentDrafts((current) => ({ ...current, [selectedIdea.id]: event.target.value }))}
+                placeholder={text.commentPlaceholder}
+              />
+              <button className="rounded-md bg-forest-700 px-4 py-3 text-base font-black text-white" type="button" onClick={() => addComment(selectedIdea.id)}>
+                {text.sendComment}
+              </button>
             </div>
           </div>
         </aside>
