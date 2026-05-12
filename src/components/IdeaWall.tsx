@@ -6,7 +6,9 @@ import {
   Background,
   Controls,
   ReactFlow,
+  applyNodeChanges,
   type Node,
+  type NodeChange,
   type NodeProps,
   type NodeTypes,
   type ReactFlowInstance
@@ -216,6 +218,7 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole, teac
   const [isSyncing, setIsSyncing] = useState(false);
   const [draftPosition, setDraftPosition] = useState({ x: 90, y: 90 });
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<IdeaFlowNode> | null>(null);
+  const [flowNodes, setFlowNodes] = useState<IdeaFlowNode[]>([]);
 
   const isAdmin = currentUserRole === "admin";
   const currentActorId = currentUserId || `name:${currentUserName}`;
@@ -247,7 +250,7 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole, teac
     );
   }, [currentActorId, currentUserId, currentUserName, ideas, isAdmin, search]);
 
-  const flowNodes = useMemo<IdeaFlowNode[]>(
+  const visibleFlowNodes = useMemo<IdeaFlowNode[]>(
     () =>
       visibleIdeas.map((idea) => ({
         id: idea.id,
@@ -262,6 +265,10 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole, teac
       })),
     [visibleIdeas]
   );
+
+  useEffect(() => {
+    setFlowNodes(visibleFlowNodes);
+  }, [visibleFlowNodes]);
 
   async function refreshCloudIdeas() {
     if (!isIdeaWallCloudAvailable()) return;
@@ -399,6 +406,10 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole, teac
     setBody("");
     setColor("yellow");
     setSelectedId(idea.id);
+  }
+
+  function handleNodesChange(changes: NodeChange<IdeaFlowNode>[]) {
+    setFlowNodes((currentNodes) => applyNodeChanges(changes, currentNodes) as IdeaFlowNode[]);
   }
 
   function handleNodeDragStop(_event: ReactMouseEvent, node: IdeaFlowNode) {
@@ -623,6 +634,7 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole, teac
           edges={[]}
           nodeTypes={nodeTypes}
           onInit={setFlowInstance}
+          onNodesChange={handleNodesChange}
           onNodeDragStop={handleNodeDragStop}
           onPaneClick={handlePaneClick}
           fitView
