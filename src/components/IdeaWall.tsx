@@ -38,7 +38,9 @@ type IdeaWallProps = {
 
 type IdeaNodeData = {
   idea: IdeaNote;
+  canManage: boolean;
   colorClass: string;
+  onEdit: (ideaId: string) => void;
   onSelect: (ideaId: string) => void;
 } & Record<string, unknown>;
 
@@ -73,6 +75,7 @@ const text = {
   pin: "置頂",
   unpin: "取消置頂",
   pinned: "置頂",
+  cancel: "取消",
   untitled: "未命名想法",
   confirmDelete: "確定要刪除此便利貼嗎？此動作無法復原。",
   visibilityAll: "全體教師",
@@ -152,7 +155,7 @@ function autoResizeTextArea(event: FormEvent<HTMLTextAreaElement>) {
 }
 
 function IdeaStickyNode({ data }: NodeProps<IdeaFlowNode>) {
-  const { idea, colorClass, onSelect } = data;
+  const { idea, canManage, colorClass, onEdit, onSelect } = data;
   const [isHovered, setIsHovered] = useState(false);
   const cardTransform = isHovered
     ? `rotate(${idea.rotation}deg) translateY(-2px) scale(1.02)`
@@ -171,13 +174,26 @@ function IdeaStickyNode({ data }: NodeProps<IdeaFlowNode>) {
       onMouseLeave={() => setIsHovered(false)}
     >
       <div
-        className={`sticky-note-card rounded-sm border p-4 shadow-lg transition-transform duration-150 ease-out hover:shadow-xl ${colorClass} ${idea.pinned ? "ring-4 ring-amber-300" : ""}`}
+        className={`sticky-note-card relative rounded-sm border p-4 shadow-lg transition-transform duration-150 ease-out hover:shadow-xl ${colorClass} ${idea.pinned ? "ring-4 ring-amber-300" : ""}`}
         style={{
           transform: cardTransform,
           transformOrigin: "center center"
         }}
       >
         <div className="sticky-note-content">
+        {canManage && (
+          <button
+            className={`nodrag nowheel absolute right-2 top-2 rounded-md bg-white/90 px-2 py-1 text-xs font-black text-forest-800 shadow-sm transition ${isHovered ? "opacity-100" : "opacity-40"}`}
+            type="button"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              onEdit(idea.id);
+            }}
+          >
+            {text.edit}
+          </button>
+        )}
         <p className="text-xs font-black text-stone-600">
           {idea.authorName} / {idea.createdAt}
         </p>
@@ -247,6 +263,18 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole, teac
     return isAdmin || isIdeaOwner(idea);
   }
 
+  function openIdeaDetails(ideaId: string) {
+    setSelectedId(ideaId);
+    setEditingId("");
+  }
+
+  function openIdeaEditor(ideaId: string) {
+    const idea = ideas.find((item) => item.id === ideaId);
+    if (!idea || !canManage(idea)) return;
+    setSelectedId(idea.id);
+    startEdit(idea);
+  }
+
   const visibleIdeas = useMemo(() => {
     const term = search.trim().toLowerCase();
     return sortIdeas(
@@ -272,8 +300,10 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole, teac
         position: { x: idea.x, y: idea.y },
         data: {
           idea,
+          canManage: canManage(idea),
           colorClass: colorClasses[idea.color],
-          onSelect: setSelectedId
+          onEdit: openIdeaEditor,
+          onSelect: openIdeaDetails
         },
         draggable: true
       })),
@@ -511,6 +541,7 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole, teac
     const nextIdeas = ideas.filter((idea) => idea.id !== ideaId);
     saveLocalIdeas(nextIdeas);
     setSelectedId("");
+    setEditingId("");
     if (!isIdeaWallCloudAvailable()) {
       writeJson(ideaWallStorageKey, nextIdeas);
       return;
@@ -677,7 +708,15 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole, teac
               </p>
               <h3 className="mt-1 text-3xl font-black text-ink">{selectedIdea.title || text.untitled}</h3>
             </div>
-            <button className="rounded-md bg-rice px-3 py-2 text-base font-black" type="button" onClick={() => setSelectedId("")}>
+            <button
+              className="rounded-md bg-rice px-3 py-2 text-base font-black"
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setSelectedId("");
+                setEditingId("");
+              }}
+            >
               {text.close}
             </button>
           </div>
@@ -686,22 +725,46 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole, teac
             <button
               className={`rounded-md px-3 py-2 text-base font-black ${selectedIdea.supportUserIds.includes(currentActorId) ? "bg-forest-700 text-white" : "bg-rice text-forest-800"}`}
               type="button"
-              onClick={() => toggleSupport(selectedIdea.id)}
+              onClick={(event) => {
+                event.stopPropagation();
+                toggleSupport(selectedIdea.id);
+              }}
             >
               {selectedIdea.supportUserIds.includes(currentActorId) ? text.supported : text.support} {selectedIdea.supportUserIds.length}
             </button>
             {isAdmin && (
-              <button className="rounded-md bg-rice px-3 py-2 text-base font-black" type="button" onClick={() => togglePin(selectedIdea.id)}>
+              <button
+                className="rounded-md bg-rice px-3 py-2 text-base font-black"
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  togglePin(selectedIdea.id);
+                }}
+              >
                 {selectedIdea.pinned ? text.unpin : text.pin}
               </button>
             )}
             {canManage(selectedIdea) && (
-              <button className="rounded-md bg-rice px-3 py-2 text-base font-black" type="button" onClick={() => startEdit(selectedIdea)}>
+              <button
+                className="rounded-md bg-rice px-3 py-2 text-base font-black"
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  startEdit(selectedIdea);
+                }}
+              >
                 {text.edit}
               </button>
             )}
             {canManage(selectedIdea) && (
-              <button className="rounded-md bg-red-50 px-3 py-2 text-base font-black text-red-700" type="button" onClick={() => void deleteIdea(selectedIdea.id)}>
+              <button
+                className="rounded-md bg-red-50 px-3 py-2 text-base font-black text-red-700"
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void deleteIdea(selectedIdea.id);
+                }}
+              >
                 {text.remove}
               </button>
             )}
@@ -759,9 +822,28 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole, teac
                   ))}
                 </select>
               </div>
-              <button className="rounded-md bg-forest-700 px-4 py-3 text-base font-black text-white" type="button" onClick={() => saveEdit(selectedIdea.id)}>
-                {text.save}
-              </button>
+              <div className="flex gap-2">
+                <button
+                  className="rounded-md bg-forest-700 px-4 py-3 text-base font-black text-white"
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    saveEdit(selectedIdea.id);
+                  }}
+                >
+                  {text.save}
+                </button>
+                <button
+                  className="rounded-md bg-rice px-4 py-3 text-base font-black text-ink"
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setEditingId("");
+                  }}
+                >
+                  {text.cancel}
+                </button>
+              </div>
             </div>
           ) : (
             <p className="mt-4 whitespace-pre-wrap break-words rounded-lg bg-rice p-4 text-xl font-bold leading-relaxed text-ink">
@@ -788,7 +870,14 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole, teac
                 onChange={(event) => setCommentDrafts((current) => ({ ...current, [selectedIdea.id]: event.target.value }))}
                 placeholder={text.commentPlaceholder}
               />
-              <button className="rounded-md bg-forest-700 px-4 py-3 text-base font-black text-white" type="button" onClick={() => addComment(selectedIdea.id)}>
+              <button
+                className="rounded-md bg-forest-700 px-4 py-3 text-base font-black text-white"
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  addComment(selectedIdea.id);
+                }}
+              >
                 {text.sendComment}
               </button>
             </div>
