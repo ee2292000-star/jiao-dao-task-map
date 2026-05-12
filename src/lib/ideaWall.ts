@@ -176,3 +176,18 @@ export async function deleteIdeaCloud(ideaId: string) {
   const { error } = await supabase.from("idea_wall_notes").delete().eq("id", ideaId);
   if (error) throw error;
 }
+
+export function subscribeIdeaWallCloud(onChange: () => void) {
+  if (!supabase) return () => {};
+  const client = supabase;
+
+  const channel = client
+    .channel("idea-wall-realtime")
+    .on("postgres_changes", { event: "*", schema: "public", table: "idea_wall_notes" }, onChange)
+    .on("postgres_changes", { event: "*", schema: "public", table: "idea_wall_topics" }, onChange)
+    .subscribe();
+
+  return () => {
+    void client.removeChannel(channel);
+  };
+}
