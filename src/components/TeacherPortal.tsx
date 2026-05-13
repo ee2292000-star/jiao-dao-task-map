@@ -6,6 +6,7 @@ import { getTeacherFocusTasks } from "@/lib/decisionSupport";
 import { getDaysLeft } from "@/lib/reminders";
 import { TaskCard } from "./TaskCard";
 import { ActionButton } from "./ActionBar";
+import { StickyNoteCard } from "./StickyNoteCard";
 
 const ALL_STICKY_RECIPIENT_ID = "__all__";
 
@@ -171,50 +172,42 @@ export function TeacherPortal({
   function renderNote(note: StickyNote) {
     const isMine = identityIds.includes(note.authorId);
     return (
-      <article key={note.id} className={`rounded-lg border p-4 ${colorClass[note.color]}`}>
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-sm font-black text-stone-700">{colorLabel[note.color]}</p>
-            <h4 className="text-2xl font-black text-ink">{note.title}</h4>
-          </div>
-          <div className="flex gap-2">
-            {isMine && (
-              <button className="rounded-md bg-white px-2 py-1 text-sm font-black" onClick={() => startEditNote(note)} type="button">
-                編輯
-              </button>
-            )}
-            {isMine && (
-              <button className="rounded-md bg-white px-2 py-1 text-sm font-black" onClick={() => onSetNoteStatus(note.id, note.status === "archived" ? "normal" : "archived")} type="button">
-                {note.status === "archived" ? "還原" : "封存"}
-              </button>
-            )}
-            {isMine && (
-              <button className="rounded-md bg-red-50 px-2 py-1 text-sm font-black text-red-700" onClick={() => deleteNote(note.id)} type="button">
-                刪除
-              </button>
-            )}
-          </div>
-        </div>
+      <article key={note.id} className="space-y-3">
+        <StickyNoteCard
+          body={editingNoteId === note.id ? undefined : note.body}
+          category={colorLabel[note.color]}
+          footer={
+            <div className="space-y-1">
+              <p>{noteAuthor(note, teachers, teacher)} / ?? {note.updatedAt}</p>
+              <p>{noteRecipient(note, teachers)}</p>
+              <p>{noteDueText(note)}</p>
+            </div>
+          }
+          onEdit={isMine ? () => startEditNote(note) : undefined}
+          rotation={note.id.charCodeAt(0) % 2 === 0 ? 1 : -1}
+          title={note.title}
+          tone={note.color}
+        />
 
         {editingNoteId === note.id ? (
-          <div className="mt-3 grid gap-2">
+          <div className="grid gap-2 rounded-lg border border-forest-100 bg-white p-3">
             <input className="rounded-md border border-forest-100 bg-white px-3 py-2 font-bold" value={editTitle} onChange={(event) => setEditTitle(event.target.value)} />
             <textarea className="min-h-24 rounded-md border border-forest-100 bg-white px-3 py-2 font-bold" value={editBody} onChange={(event) => setEditBody(event.target.value)} />
             <div className="flex gap-2">
-              <ActionButton tone="primary" onClick={() => saveEditNote(note.id)}>儲存</ActionButton>
-              <ActionButton tone="quiet" onClick={() => setEditingNoteId("")}>取消</ActionButton>
+              <ActionButton tone="primary" onClick={() => saveEditNote(note.id)}>??</ActionButton>
+              <ActionButton tone="quiet" onClick={() => setEditingNoteId("")}>??</ActionButton>
             </div>
           </div>
-        ) : (
-          <p className="mt-3 text-lg font-bold leading-relaxed text-ink">{note.body}</p>
-        )}
+        ) : null}
 
-        <div className="mt-3 space-y-1 text-base font-bold text-stone-700">
-          <p>發布者：{noteAuthor(note, teachers, teacher)}</p>
-          <p>對象：{noteRecipient(note, teachers)}</p>
-          <p>期限：{noteDueText(note)}</p>
-          <p>更新：{note.updatedAt}</p>
-        </div>
+        {isMine && (
+          <div className="flex flex-wrap gap-2">
+            <ActionButton tone="quiet" onClick={() => onSetNoteStatus(note.id, note.status === "archived" ? "normal" : "archived")}>
+              {note.status === "archived" ? "??" : "??"}
+            </ActionButton>
+            <ActionButton tone="danger" onClick={() => deleteNote(note.id)}>??</ActionButton>
+          </div>
+        )}
       </article>
     );
   }

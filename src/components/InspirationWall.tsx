@@ -33,6 +33,7 @@ import {
   personalTodoStoragePrefix,
   upsertPersonalTodoCloud
 } from "@/lib/personalTodos";
+import { StickyNoteCard } from "@/components/StickyNoteCard";
 import type { PersonalTodo } from "@/lib/personalTodos";
 import type { AuthRole, Priority, Teacher } from "@/lib/types";
 
@@ -491,8 +492,8 @@ export function InspirationWall({ ownerId, ownerName, role, teachers = [], onCre
             {visibleNotes.map((note) => (
               <div
                 key={note.id}
-                className={`group absolute w-64 cursor-grab rounded-sm border p-4 text-left shadow-lg transition hover:scale-[1.02] active:cursor-grabbing ${colorClasses[note.color]}`}
-                style={{ left: note.x, top: note.y, transform: `rotate(${note.rotation}deg)` }}
+                className="absolute cursor-grab active:cursor-grabbing"
+                style={{ left: note.x, top: note.y }}
                 role="button"
                 tabIndex={0}
                 onClick={() => {
@@ -509,22 +510,18 @@ export function InspirationWall({ ownerId, ownerName, role, teachers = [], onCre
                 onPointerMove={moveDrag}
                 onPointerUp={endDrag}
               >
-                <button
-                  className="absolute right-2 top-2 rounded-md bg-white/90 px-2 py-1 text-xs font-black text-forest-800 opacity-40 shadow-sm transition group-hover:opacity-100"
-                  type="button"
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onClick={(event) => {
-                    event.stopPropagation();
+                <StickyNoteCard
+                  body={note.content || "??????"}
+                  category="??"
+                  footer={<span>?? {note.updatedAt}</span>}
+                  onEdit={() => {
                     setSelectedId(note.id);
                     setEditingNoteId(note.id);
                   }}
-                >
-                  編輯
-                </button>
-                <p className="text-xs font-black text-stone-600">私人靈感</p>
-                <h4 className="mt-2 text-2xl font-black leading-tight text-ink">{note.title}</h4>
-                <p className="mt-2 line-clamp-5 text-base font-bold leading-relaxed text-stone-800">{note.content || "沒有補充內容"}</p>
-                <p className="mt-4 text-xs font-black text-stone-600">更新 {note.updatedAt}</p>
+                  rotation={note.rotation}
+                  title={note.title}
+                  tone={note.color}
+                />
               </div>
             ))}
           </div>

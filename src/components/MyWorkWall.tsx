@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { MouseEvent, PointerEvent } from "react";
+import { StickyNoteCard } from "@/components/StickyNoteCard";
 import { getDaysLeft } from "@/lib/reminders";
 import {
   deletePersonalTodoCloud,
@@ -329,8 +330,8 @@ export function MyWorkWall({ ownerId, ownerName, officialTasks = [] }: MyWorkWal
           return (
             <div
               key={sticky.id}
-              className={`group absolute w-64 cursor-grab rounded-sm border p-4 text-left shadow-lg transition active:cursor-grabbing ${colorClasses[stickyColor]} ${isDone ? "scale-95 opacity-50" : "hover:scale-[1.02]"}`}
-              style={{ left: sticky.x ?? 90, top: sticky.y ?? 90, transform: `rotate(${sticky.rotation ?? 0}deg)` }}
+              className={`absolute cursor-grab active:cursor-grabbing ${isDone ? "opacity-60" : ""}`}
+              style={{ left: sticky.x ?? 90, top: sticky.y ?? 90 }}
               role="button"
               tabIndex={0}
               onClick={() => {
@@ -347,25 +348,23 @@ export function MyWorkWall({ ownerId, ownerName, officialTasks = [] }: MyWorkWal
               onPointerMove={moveDrag}
               onPointerUp={endDrag}
             >
-              <button
-                className="absolute right-2 top-2 rounded-md bg-white/90 px-2 py-1 text-xs font-black text-forest-800 opacity-40 shadow-sm transition group-hover:opacity-100"
-                type="button"
-                onPointerDown={(event) => event.stopPropagation()}
-                onClick={(event) => {
-                  event.stopPropagation();
+              <StickyNoteCard
+                body={sticky.content || sticky.note || "??????"}
+                category={statusLabels[sticky.status]}
+                footer={
+                  <div className="flex flex-wrap gap-2">
+                    {sticky.dueDate && <span>{sticky.dueDate}</span>}
+                    <span>?? {sticky.updatedAt}</span>
+                  </div>
+                }
+                onEdit={() => {
                   setSelectedId(sticky.id);
                   setEditingStickyId(sticky.id);
                 }}
-              >
-                編輯
-              </button>
-              <div className="flex items-start justify-between gap-2">
-                <span className={`rounded px-2 py-1 text-xs font-black ${statusClasses[sticky.status]}`}>{statusLabels[sticky.status]}</span>
-                {sticky.dueDate && <span className="text-xs font-black text-stone-700">{sticky.dueDate}</span>}
-              </div>
-              <h3 className="mt-3 text-2xl font-black leading-tight text-ink">{sticky.title}</h3>
-              <p className="mt-2 line-clamp-5 text-base font-bold leading-relaxed text-stone-800">{sticky.content || sticky.note || "沒有補充內容"}</p>
-              <p className="mt-4 text-xs font-black text-stone-600">更新 {sticky.updatedAt}</p>
+                rotation={sticky.rotation ?? 0}
+                title={sticky.title}
+                tone={stickyColor}
+              />
             </div>
           );
         })}

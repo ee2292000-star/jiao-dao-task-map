@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import type { Priority, StickyColor, StickyNote, Teacher } from "@/lib/types";
 import { getDaysLeft } from "@/lib/reminders";
 import { ActionBar, ActionButton } from "./ActionBar";
+import { StickyNoteCard } from "./StickyNoteCard";
 
 const ALL_STICKY_RECIPIENT_ID = "__all__";
 
@@ -183,101 +184,68 @@ export function StickyWall({
   function renderNote(note: StickyNote) {
     const canManage = canManageAll || note.authorId === currentUserId;
     return (
-      <article key={note.id} className={`rounded-lg border p-4 ${colorClass[note.color]}`}>
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-sm font-black text-stone-700">{colorLabel[note.color]} / {statusLabel(note.status)}</p>
-            <h3 className="text-2xl font-black text-ink">{note.title}</h3>
-          </div>
-          <div className="flex flex-wrap justify-end gap-2">
-            {note.convertedTaskId && (
-              <span className="rounded-md bg-white px-2 py-1 text-sm font-black text-forest-800">已轉任務</span>
-            )}
-            {canManage && (
-              <button className="rounded-md bg-white px-2 py-1 text-sm font-black" onClick={() => startEdit(note)} type="button">
-                編輯
-              </button>
-            )}
-            {canManage && (
-              <button
-                className="rounded-md bg-white px-2 py-1 text-sm font-black"
-                onClick={() => onSetStatus(note.id, note.status === "archived" ? "normal" : "archived")}
-                type="button"
-              >
-                {note.status === "archived" ? "還原" : "封存"}
-              </button>
-            )}
-            {canManage && (
-              <button className="rounded-md bg-red-50 px-2 py-1 text-sm font-black text-red-700" onClick={() => confirmDelete(note.id)} type="button">
-                刪除
-              </button>
-            )}
-          </div>
-        </div>
+      <article key={note.id} className="space-y-3">
+        <StickyNoteCard
+          body={editingNoteId === note.id ? undefined : note.body}
+          category={colorLabel[note.color] + " / " + statusLabel(note.status)}
+          footer={
+            <div className="space-y-1">
+              <p>{teacherName(note.authorId, teachers)} / ?? {note.updatedAt}</p>
+              <p>{dueText(note)}</p>
+              {note.convertedTaskId && <p>?????</p>}
+            </div>
+          }
+          onEdit={canManage ? () => startEdit(note) : undefined}
+          rotation={note.id.charCodeAt(0) % 2 === 0 ? 1 : -1}
+          title={note.title}
+          tone={note.color}
+        />
 
         {editingNoteId === note.id ? (
-          <div className="mt-3 grid gap-2">
+          <div className="grid gap-2 rounded-lg border border-forest-100 bg-white p-3">
             <input className="rounded-md border border-forest-100 bg-white px-3 py-2 font-bold" value={editTitle} onChange={(event) => setEditTitle(event.target.value)} />
             <textarea className="min-h-24 rounded-md border border-forest-100 bg-white px-3 py-2 font-bold" value={editBody} onChange={(event) => setEditBody(event.target.value)} />
             <div className="flex gap-2">
-              <ActionButton tone="primary" onClick={() => saveEdit(note.id)}>儲存</ActionButton>
-              <ActionButton tone="quiet" onClick={() => setEditingNoteId("")}>取消</ActionButton>
+              <ActionButton tone="primary" onClick={() => saveEdit(note.id)}>??</ActionButton>
+              <ActionButton tone="quiet" onClick={() => setEditingNoteId("")}>??</ActionButton>
             </div>
           </div>
-        ) : (
-          <p className="mt-3 text-lg font-bold leading-relaxed text-ink">{note.body}</p>
-        )}
+        ) : null}
 
-        <div className="mt-4 space-y-1 text-base font-bold text-stone-700">
-          <p>發布者：{teacherName(note.authorId, teachers)}</p>
-          <p>對象：{teacherName(note.assigneeId, teachers)}</p>
-          <p>期限：{dueText(note)}</p>
-          <p>更新：{note.updatedAt}</p>
+        <div className="flex flex-wrap gap-2">
+          {canManageAll && (
+            <ActionButton tone="primary" onClick={() => (note.convertedTaskId ? onOpenTask?.(note.convertedTaskId) : startConvert(note))}>
+              {note.convertedTaskId ? "????" : "????"}
+            </ActionButton>
+          )}
+          {canManageAll && <ActionButton tone="quiet" onClick={() => onSetStatus(note.id, "replied")}>?????</ActionButton>}
+          {canManage && (
+            <ActionButton tone="quiet" onClick={() => onSetStatus(note.id, note.status === "archived" ? "normal" : "archived")}>
+              {note.status === "archived" ? "??" : "??"}
+            </ActionButton>
+          )}
+          {canManage && <ActionButton tone="danger" onClick={() => confirmDelete(note.id)}>??</ActionButton>}
         </div>
 
-        {canManageAll && (
-          <ActionBar subtle>
-            <ActionButton tone="primary" onClick={() => (note.convertedTaskId ? onOpenTask?.(note.convertedTaskId) : startConvert(note))}>
-              {note.convertedTaskId ? "查看任務" : "轉為任務"}
-            </ActionButton>
-            <select className="rounded-md border border-forest-100 bg-white px-3 py-2 text-base font-black" value={note.assigneeId ?? ""} onChange={(event) => onAssign(note.id, event.target.value)}>
-              <option value="">主任</option>
-              <option value={ALL_STICKY_RECIPIENT_ID}>全體教師</option>
-              {teacherOptions.map((teacher) => (
-                <option key={teacher.id} value={teacher.id}>{teacher.name}</option>
-              ))}
-            </select>
-            <ActionButton tone="quiet" onClick={() => onSetStatus(note.id, "replied")}>標記已回覆</ActionButton>
-          </ActionBar>
-        )}
-
         {canManageAll && convertingNoteId === note.id && !note.convertedTaskId && (
-          <div className="mt-3 rounded-lg border border-forest-100 bg-white p-3">
-            <p className="text-lg font-black text-forest-800">轉為正式任務</p>
-            <p className="mt-1 text-base font-bold text-stone-700">會帶入便利貼標題與內容，主任可再調整分工與期限。</p>
+          <div className="rounded-lg border border-forest-100 bg-white p-3">
+            <p className="text-lg font-black text-forest-800">??????</p>
             <div className="mt-3 grid gap-2 md:grid-cols-4">
               <select className="rounded-md border border-forest-100 bg-warm px-3 py-2 font-black" value={convertDraft.assigneeId} onChange={(event) => setConvertDraft((current) => ({ ...current, assigneeId: event.target.value }))}>
-                <option value="">尚未指派</option>
-                {teacherOptions.map((teacher) => (
-                  <option key={teacher.id} value={teacher.id}>{teacher.name}</option>
-                ))}
+                <option value="">?????</option>
+                {teacherOptions.map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.name}</option>)}
               </select>
               <input className="rounded-md border border-forest-100 bg-warm px-3 py-2 font-black" type="date" value={convertDraft.dueDate} onChange={(event) => setConvertDraft((current) => ({ ...current, dueDate: event.target.value }))} />
-              <select className="rounded-md border border-forest-100 bg-warm px-3 py-2 font-black" value={convertDraft.taskType} onChange={(event) => setConvertDraft((current) => ({ ...current, taskType: event.target.value }))}>
-                <option value="行政協作">行政協作</option>
-                <option value="臨時交辦">臨時交辦</option>
-                <option value="資料回報">資料回報</option>
-                <option value="活動準備">活動準備</option>
-              </select>
+              <input className="rounded-md border border-forest-100 bg-warm px-3 py-2 font-black" value={convertDraft.taskType} onChange={(event) => setConvertDraft((current) => ({ ...current, taskType: event.target.value }))} />
               <select className="rounded-md border border-forest-100 bg-warm px-3 py-2 font-black" value={convertDraft.priority} onChange={(event) => setConvertDraft((current) => ({ ...current, priority: event.target.value as Priority }))}>
-                <option value="low">低</option>
-                <option value="normal">一般</option>
-                <option value="high">優先</option>
+                <option value="low">?</option>
+                <option value="normal">??</option>
+                <option value="high">?</option>
               </select>
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
-              <ActionButton tone="primary" onClick={() => submitConvert(note.id)}>建立任務</ActionButton>
-              <ActionButton tone="quiet" onClick={() => setConvertingNoteId("")}>取消</ActionButton>
+              <ActionButton tone="primary" onClick={() => submitConvert(note.id)}>????</ActionButton>
+              <ActionButton tone="quiet" onClick={() => setConvertingNoteId("")}>??</ActionButton>
             </div>
           </div>
         )}

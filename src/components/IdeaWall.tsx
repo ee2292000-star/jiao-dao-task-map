@@ -13,6 +13,7 @@ import {
   type NodeTypes,
   type ReactFlowInstance
 } from "@xyflow/react";
+import { StickyNoteCard } from "@/components/StickyNoteCard";
 import "@xyflow/react/dist/style.css";
 import {
   defaultIdeaTopic,
@@ -39,7 +40,6 @@ type IdeaWallProps = {
 type IdeaNodeData = {
   idea: IdeaNote;
   canManage: boolean;
-  colorClass: string;
   onEdit: (ideaId: string) => void;
   onSelect: (ideaId: string) => void;
 } & Record<string, unknown>;
@@ -84,13 +84,6 @@ const text = {
   chooseTeacher: "選擇教師"
 };
 
-const colorClasses: Record<IdeaColor, string> = {
-  yellow: "border-yellow-200 bg-yellow-100",
-  pink: "border-pink-200 bg-pink-100",
-  blue: "border-blue-200 bg-blue-100",
-  green: "border-green-200 bg-green-100",
-  purple: "border-purple-200 bg-purple-100"
-};
 
 const colorOptions: IdeaColor[] = ["yellow", "pink", "blue", "green", "purple"];
 const colorLabels: Record<IdeaColor, string> = {
@@ -155,67 +148,34 @@ function autoResizeTextArea(event: FormEvent<HTMLTextAreaElement>) {
 }
 
 function IdeaStickyNode({ data }: NodeProps<IdeaFlowNode>) {
-  const { idea, canManage, colorClass, onEdit, onSelect } = data;
-  const [isHovered, setIsHovered] = useState(false);
-  const cardTransform = isHovered
-    ? `rotate(${idea.rotation}deg) translateY(-2px) scale(1.02)`
-    : `rotate(${idea.rotation}deg)`;
+  const { idea, canManage, onEdit, onSelect } = data;
 
   return (
     <div
-      className="w-64 cursor-grab text-left active:cursor-grabbing"
+      className="nodrag nowheel w-64 cursor-grab text-left active:cursor-grabbing"
       role="button"
       tabIndex={0}
       onClick={() => onSelect(idea.id)}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") onSelect(idea.id);
       }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
     >
-      <div
-        className={`sticky-note-card relative rounded-sm border p-4 shadow-lg transition-transform duration-150 ease-out hover:shadow-xl ${colorClass} ${idea.pinned ? "ring-4 ring-amber-300" : ""}`}
-        style={{
-          transform: cardTransform,
-          transformOrigin: "center center"
-        }}
-      >
-        <div className="sticky-note-content">
-        {canManage && (
-          <button
-            className={`nodrag nowheel absolute right-2 top-2 rounded-md bg-white/90 px-2 py-1 text-xs font-black text-forest-800 shadow-sm transition ${isHovered ? "opacity-100" : "opacity-40"}`}
-            type="button"
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => {
-              event.stopPropagation();
-              onEdit(idea.id);
-            }}
-          >
-            {text.edit}
-          </button>
-        )}
-        <p className="text-xs font-black text-stone-600">
-          {idea.authorName} / {idea.createdAt}
-        </p>
-        {idea.pinned && (
-          <span className="mt-2 inline-block rounded-full bg-white px-2 py-1 text-xs font-black text-forest-800">
-            {text.pinned}
-          </span>
-        )}
-        {idea.title && <h3 className="mt-2 line-clamp-2 text-xl font-black leading-tight text-ink">{idea.title}</h3>}
-        <p className="mt-2 line-clamp-6 whitespace-pre-wrap break-words text-base font-bold leading-relaxed text-ink">
-          {idea.body}
-        </p>
-        <div className="mt-3 flex gap-2 text-sm font-black text-forest-800">
-          <span>
-            {text.support} {idea.supportUserIds.length}
-          </span>
-          <span>
-            {text.comments} {idea.comments.length}
-          </span>
-        </div>
-        </div>
-      </div>
+      <StickyNoteCard
+        body={idea.body}
+        category={idea.pinned ? text.pinned : colorLabels[idea.color]}
+        className={idea.pinned ? "ring-4 ring-amber-300" : ""}
+        footer={
+          <div className="flex flex-wrap gap-2">
+            <span>{idea.authorName} / {idea.createdAt}</span>
+            <span>{text.support} {idea.supportUserIds.length}</span>
+            <span>{text.comments} {idea.comments.length}</span>
+          </div>
+        }
+        onEdit={canManage ? () => onEdit(idea.id) : undefined}
+        rotation={idea.rotation}
+        title={idea.title || text.untitled}
+        tone={idea.color}
+      />
     </div>
   );
 }
@@ -301,7 +261,6 @@ export function IdeaWall({ currentUserId, currentUserName, currentUserRole, teac
         data: {
           idea,
           canManage: canManage(idea),
-          colorClass: colorClasses[idea.color],
           onEdit: openIdeaEditor,
           onSelect: openIdeaDetails
         },
