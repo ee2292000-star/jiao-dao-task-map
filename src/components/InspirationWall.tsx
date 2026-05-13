@@ -146,6 +146,7 @@ export function InspirationWall({ ownerId, ownerName, role, teachers = [], onCre
   const [noteColor, setNoteColor] = useState<InspirationColor>("yellow");
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState("");
+  const [editingNoteId, setEditingNoteId] = useState("");
   const [shareTopicTitle, setShareTopicTitle] = useState(defaultIdeaTopic.title);
   const [personalDueDate, setPersonalDueDate] = useState(nextWeekString());
   const [officialDueDate, setOfficialDueDate] = useState(nextWeekString());
@@ -308,15 +309,16 @@ export function InspirationWall({ ownerId, ownerName, role, teachers = [], onCre
     if (!window.confirm("確定要刪除這張靈感便利貼嗎？")) return;
     saveNotes(notes.filter((note) => note.id !== noteId));
     setSelectedId("");
+    setEditingNoteId("");
     void deleteInspirationNoteCloud(noteId, ownerId).catch(() => setNotice("雲端同步暫時失敗，已先保留在本機。"));
   }
 
-  function startDrag(event: PointerEvent<HTMLButtonElement>, note: InspirationStickyNote) {
+  function startDrag(event: PointerEvent<HTMLElement>, note: InspirationStickyNote) {
     event.currentTarget.setPointerCapture(event.pointerId);
     setDragging({ id: note.id, startX: event.clientX, startY: event.clientY, originalX: note.x, originalY: note.y });
   }
 
-  function moveDrag(event: PointerEvent<HTMLButtonElement>) {
+  function moveDrag(event: PointerEvent<HTMLElement>) {
     if (!dragging) return;
     const nextNotes = notes.map((note) =>
       note.id === dragging.id
@@ -487,21 +489,43 @@ export function InspirationWall({ ownerId, ownerName, role, teachers = [], onCre
               </div>
             )}
             {visibleNotes.map((note) => (
-              <button
+              <div
                 key={note.id}
-                className={`absolute w-64 rounded-sm border p-4 text-left shadow-lg transition hover:scale-[1.02] ${colorClasses[note.color]}`}
+                className={`group absolute w-64 cursor-grab rounded-sm border p-4 text-left shadow-lg transition hover:scale-[1.02] active:cursor-grabbing ${colorClasses[note.color]}`}
                 style={{ left: note.x, top: note.y, transform: `rotate(${note.rotation}deg)` }}
-                type="button"
-                onClick={() => setSelectedId(note.id)}
+                role="button"
+                tabIndex={0}
+                onClick={() => {
+                  setSelectedId(note.id);
+                  setEditingNoteId("");
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    setSelectedId(note.id);
+                    setEditingNoteId("");
+                  }
+                }}
                 onPointerDown={(event) => startDrag(event, note)}
                 onPointerMove={moveDrag}
                 onPointerUp={endDrag}
               >
+                <button
+                  className="absolute right-2 top-2 rounded-md bg-white/90 px-2 py-1 text-xs font-black text-forest-800 opacity-40 shadow-sm transition group-hover:opacity-100"
+                  type="button"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setSelectedId(note.id);
+                    setEditingNoteId(note.id);
+                  }}
+                >
+                  編輯
+                </button>
                 <p className="text-xs font-black text-stone-600">私人靈感</p>
                 <h4 className="mt-2 text-2xl font-black leading-tight text-ink">{note.title}</h4>
                 <p className="mt-2 line-clamp-5 text-base font-bold leading-relaxed text-stone-800">{note.content || "沒有補充內容"}</p>
                 <p className="mt-4 text-xs font-black text-stone-600">更新 {note.updatedAt}</p>
-              </button>
+              </div>
             ))}
           </div>
 
@@ -525,7 +549,10 @@ export function InspirationWall({ ownerId, ownerName, role, teachers = [], onCre
               <p className="text-lg font-black text-forest-700">靈感便利貼</p>
               <h3 className="mt-1 text-4xl font-black text-ink">{selectedNote.title}</h3>
             </div>
-            <button className="rounded-md bg-rice px-4 py-2 text-base font-black text-ink" type="button" onClick={() => setSelectedId("")}>關閉</button>
+            <div className="flex gap-2">
+              <button className="rounded-md bg-forest-700 px-4 py-2 text-base font-black text-white" type="button" onClick={() => setEditingNoteId(selectedNote.id)}>編輯</button>
+              <button className="rounded-md bg-rice px-4 py-2 text-base font-black text-ink" type="button" onClick={() => setSelectedId("")}>關閉</button>
+            </div>
           </div>
 
           <div className="mt-5 grid gap-3">

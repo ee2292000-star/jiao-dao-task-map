@@ -115,6 +115,7 @@ export function MyWorkWall({ ownerId, ownerName, officialTasks = [] }: MyWorkWal
   const [color, setColor] = useState<StickyColor>("yellow");
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState("");
+  const [editingStickyId, setEditingStickyId] = useState("");
   const [draftPosition, setDraftPosition] = useState({ x: 90, y: 90 });
   const [dragging, setDragging] = useState<{ id: string; startX: number; startY: number; originalX: number; originalY: number } | null>(null);
   const [syncNotice, setSyncNotice] = useState(
@@ -225,10 +226,11 @@ export function MyWorkWall({ ownerId, ownerName, officialTasks = [] }: MyWorkWal
     if (!window.confirm("確定要刪除這張個人便利貼嗎？此動作無法復原。")) return;
     saveStickies(stickies.filter((sticky) => sticky.id !== stickyId));
     setSelectedId("");
+    setEditingStickyId("");
     void deletePersonalTodoCloud(stickyId, ownerId).catch(() => setSyncNotice("雲端同步暫時失敗，已先保留在本機。"));
   }
 
-  function startDrag(event: PointerEvent<HTMLButtonElement>, sticky: PersonalTodo) {
+  function startDrag(event: PointerEvent<HTMLElement>, sticky: PersonalTodo) {
     event.currentTarget.setPointerCapture(event.pointerId);
     setDragging({
       id: sticky.id,
@@ -239,7 +241,7 @@ export function MyWorkWall({ ownerId, ownerName, officialTasks = [] }: MyWorkWal
     });
   }
 
-  function moveDrag(event: PointerEvent<HTMLButtonElement>) {
+  function moveDrag(event: PointerEvent<HTMLElement>) {
     if (!dragging) return;
     const nextStickies = stickies.map((sticky) =>
       sticky.id === dragging.id
@@ -325,16 +327,38 @@ export function MyWorkWall({ ownerId, ownerName, officialTasks = [] }: MyWorkWal
           const stickyColor = sticky.color ?? "yellow";
           const isDone = sticky.status === "done";
           return (
-            <button
+            <div
               key={sticky.id}
-              className={`absolute w-64 rounded-sm border p-4 text-left shadow-lg transition ${colorClasses[stickyColor]} ${isDone ? "scale-95 opacity-50" : "hover:scale-[1.02]"}`}
+              className={`group absolute w-64 cursor-grab rounded-sm border p-4 text-left shadow-lg transition active:cursor-grabbing ${colorClasses[stickyColor]} ${isDone ? "scale-95 opacity-50" : "hover:scale-[1.02]"}`}
               style={{ left: sticky.x ?? 90, top: sticky.y ?? 90, transform: `rotate(${sticky.rotation ?? 0}deg)` }}
-              type="button"
-              onClick={() => setSelectedId(sticky.id)}
+              role="button"
+              tabIndex={0}
+              onClick={() => {
+                setSelectedId(sticky.id);
+                setEditingStickyId("");
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  setSelectedId(sticky.id);
+                  setEditingStickyId("");
+                }
+              }}
               onPointerDown={(event) => startDrag(event, sticky)}
               onPointerMove={moveDrag}
               onPointerUp={endDrag}
             >
+              <button
+                className="absolute right-2 top-2 rounded-md bg-white/90 px-2 py-1 text-xs font-black text-forest-800 opacity-40 shadow-sm transition group-hover:opacity-100"
+                type="button"
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setSelectedId(sticky.id);
+                  setEditingStickyId(sticky.id);
+                }}
+              >
+                編輯
+              </button>
               <div className="flex items-start justify-between gap-2">
                 <span className={`rounded px-2 py-1 text-xs font-black ${statusClasses[sticky.status]}`}>{statusLabels[sticky.status]}</span>
                 {sticky.dueDate && <span className="text-xs font-black text-stone-700">{sticky.dueDate}</span>}
@@ -342,7 +366,7 @@ export function MyWorkWall({ ownerId, ownerName, officialTasks = [] }: MyWorkWal
               <h3 className="mt-3 text-2xl font-black leading-tight text-ink">{sticky.title}</h3>
               <p className="mt-2 line-clamp-5 text-base font-bold leading-relaxed text-stone-800">{sticky.content || sticky.note || "沒有補充內容"}</p>
               <p className="mt-4 text-xs font-black text-stone-600">更新 {sticky.updatedAt}</p>
-            </button>
+            </div>
           );
         })}
       </div>
@@ -393,7 +417,10 @@ export function MyWorkWall({ ownerId, ownerName, officialTasks = [] }: MyWorkWal
               <p className="text-lg font-black text-forest-700">便利貼細節</p>
               <h3 className="mt-1 text-4xl font-black text-ink">{selectedSticky.title}</h3>
             </div>
-            <button className="rounded-md bg-rice px-4 py-2 text-base font-black text-ink" type="button" onClick={() => setSelectedId("")}>關閉</button>
+            <div className="flex gap-2">
+              <button className="rounded-md bg-forest-700 px-4 py-2 text-base font-black text-white" type="button" onClick={() => setEditingStickyId(selectedSticky.id)}>編輯</button>
+              <button className="rounded-md bg-rice px-4 py-2 text-base font-black text-ink" type="button" onClick={() => setSelectedId("")}>關閉</button>
+            </div>
           </div>
 
           <div className="mt-5 grid gap-3">
