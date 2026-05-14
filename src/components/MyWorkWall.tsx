@@ -129,7 +129,7 @@ export function MyWorkWall({ ownerId, ownerName, officialTasks = [] }: MyWorkWal
   const activeStickies = useMemo(() => {
     const term = search.trim().toLowerCase();
     return stickies
-      .filter((sticky) => sticky.status !== "archived")
+      .filter((sticky) => sticky.status !== "done" && sticky.status !== "archived")
       .filter((sticky) => !term || `${sticky.title} ${sticky.content ?? sticky.note}`.toLowerCase().includes(term))
       .sort((a, b) => statusSortValue(a.status) - statusSortValue(b.status) || b.updatedAt.localeCompare(a.updatedAt));
   }, [search, stickies]);
@@ -326,11 +326,10 @@ export function MyWorkWall({ ownerId, ownerName, officialTasks = [] }: MyWorkWal
         )}
         {activeStickies.map((sticky) => {
           const stickyColor = sticky.color ?? "yellow";
-          const isDone = sticky.status === "done";
           return (
             <div
               key={sticky.id}
-              className={`absolute cursor-grab active:cursor-grabbing ${isDone ? "opacity-60" : ""}`}
+              className="absolute cursor-grab active:cursor-grabbing"
               style={{ left: sticky.x ?? 90, top: sticky.y ?? 90 }}
               role="button"
               tabIndex={0}
