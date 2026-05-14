@@ -552,18 +552,31 @@ export function InspirationWall({ ownerId, ownerName, role, teachers = [], onCre
             </div>
           </div>
 
-          <div className="mt-5 grid gap-3">
-            <input className="rounded-md border border-forest-100 bg-rice px-3 py-3 text-lg font-bold" value={selectedNote.title} onChange={(event) => updateNote(selectedNote.id, { title: event.target.value })} />
-            <textarea className="min-h-36 rounded-md border border-forest-100 bg-rice px-3 py-3 text-lg font-bold" value={selectedNote.content} onChange={(event) => updateNote(selectedNote.id, { content: event.target.value })} />
-            <div className="grid gap-3 sm:grid-cols-2">
-              <select className="rounded-md border border-forest-100 bg-rice px-3 py-3 text-lg font-bold" value={selectedNote.color} onChange={(event) => updateNote(selectedNote.id, { color: event.target.value as InspirationColor })}>
-                {colors.map((nextColor) => <option key={nextColor} value={nextColor}>{colorLabels[nextColor]}</option>)}
-              </select>
-              <button className="rounded-md bg-stone-100 px-4 py-3 text-lg font-black text-stone-700" type="button" onClick={() => updateNote(selectedNote.id, { status: selectedNote.status === "archived" ? "active" : "archived" })}>
-                {selectedNote.status === "archived" ? "還原" : "封存"}
-              </button>
+          {editingNoteId === selectedNote.id ? (
+            <div className="mt-5 grid gap-3">
+              <input className="rounded-md border border-forest-100 bg-rice px-3 py-3 text-lg font-bold" value={selectedNote.title} onChange={(event) => updateNote(selectedNote.id, { title: event.target.value })} />
+              <textarea className="min-h-36 rounded-md border border-forest-100 bg-rice px-3 py-3 text-lg font-bold" value={selectedNote.content} onChange={(event) => updateNote(selectedNote.id, { content: event.target.value })} />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <select className="rounded-md border border-forest-100 bg-rice px-3 py-3 text-lg font-bold" value={selectedNote.color} onChange={(event) => updateNote(selectedNote.id, { color: event.target.value as InspirationColor })}>
+                  {colors.map((nextColor) => <option key={nextColor} value={nextColor}>{colorLabels[nextColor]}</option>)}
+                </select>
+                <button className="rounded-md bg-stone-100 px-4 py-3 text-lg font-black text-stone-700" type="button" onClick={() => updateNote(selectedNote.id, { status: selectedNote.status === "archived" ? "active" : "archived" })}>
+                  {selectedNote.status === "archived" ? "??" : "??"}
+                </button>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="mt-5 rounded-lg bg-rice p-4">
+              <p className="whitespace-pre-wrap break-words text-xl font-bold leading-relaxed text-ink">
+                {selectedNote.content || "??????"}
+              </p>
+              <div className="mt-4 grid gap-2 text-base font-black text-stone-700 sm:grid-cols-2">
+                <span>???{colorLabels[selectedNote.color]}</span>
+                <span>???{selectedNote.status === "archived" ? "???" : "???"}</span>
+                <span>???{selectedNote.updatedAt}</span>
+              </div>
+            </div>
+          )}
 
           <div className="mt-5 rounded-lg bg-rice p-4">
             <h4 className="text-2xl font-black text-ink">分享或轉換</h4>

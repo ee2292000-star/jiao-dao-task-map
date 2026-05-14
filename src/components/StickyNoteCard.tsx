@@ -69,7 +69,7 @@ export function StickyNoteCard({
         <span className={`rounded px-2 py-1 text-xs font-black ${categoryClasses[tone]}`}>{category}</span>
         {onEdit && (
           <button
-            className="pointer-events-auto rounded-md bg-white/85 px-2 py-1 text-xs font-black text-forest-800 opacity-45 shadow-sm transition group-hover:opacity-100"
+            className="nodrag nowheel pointer-events-auto rounded-md bg-white/85 px-2 py-1 text-xs font-black text-forest-800 opacity-45 shadow-sm transition group-hover:opacity-100"
             type="button"
             onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => {

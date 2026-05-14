@@ -422,43 +422,57 @@ export function MyWorkWall({ ownerId, ownerName, officialTasks = [] }: MyWorkWal
             </div>
           </div>
 
-          <div className="mt-5 grid gap-3">
-            <input
-              className="rounded-md border border-forest-100 bg-rice px-3 py-3 text-lg font-bold"
-              value={selectedSticky.title}
-              onChange={(event) => updateSticky(selectedSticky.id, { title: event.target.value })}
-            />
-            <textarea
-              className="min-h-36 rounded-md border border-forest-100 bg-rice px-3 py-3 text-lg font-bold"
-              value={selectedSticky.content ?? selectedSticky.note}
-              onChange={(event) => updateSticky(selectedSticky.id, { content: event.target.value, note: event.target.value })}
-            />
-            <div className="grid gap-3 sm:grid-cols-2">
+          {editingStickyId === selectedSticky.id ? (
+            <div className="mt-5 grid gap-3">
               <input
                 className="rounded-md border border-forest-100 bg-rice px-3 py-3 text-lg font-bold"
-                type="date"
-                value={selectedSticky.dueDate ?? ""}
-                onChange={(event) => updateSticky(selectedSticky.id, { dueDate: event.target.value || undefined })}
+                value={selectedSticky.title}
+                onChange={(event) => updateSticky(selectedSticky.id, { title: event.target.value })}
               />
-              <select
-                className="rounded-md border border-forest-100 bg-rice px-3 py-3 text-lg font-bold"
-                value={selectedSticky.color ?? "yellow"}
-                onChange={(event) => updateSticky(selectedSticky.id, { color: event.target.value as StickyColor })}
-              >
-                {colors.map((nextColor) => <option key={nextColor} value={nextColor}>{colorLabels[nextColor]}</option>)}
-              </select>
-              <select
-                className="rounded-md border border-forest-100 bg-rice px-3 py-3 text-lg font-bold"
-                value={selectedSticky.status}
-                onChange={(event) => updateSticky(selectedSticky.id, { status: event.target.value as StickyStatus })}
-              >
-                <option value="todo">待辦</option>
-                <option value="doing">進行中</option>
-                <option value="done">完成，撕下便利貼</option>
-                <option value="archived">封存</option>
-              </select>
+              <textarea
+                className="min-h-36 rounded-md border border-forest-100 bg-rice px-3 py-3 text-lg font-bold"
+                value={selectedSticky.content ?? selectedSticky.note}
+                onChange={(event) => updateSticky(selectedSticky.id, { content: event.target.value, note: event.target.value })}
+              />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <input
+                  className="rounded-md border border-forest-100 bg-rice px-3 py-3 text-lg font-bold"
+                  type="date"
+                  value={selectedSticky.dueDate ?? ""}
+                  onChange={(event) => updateSticky(selectedSticky.id, { dueDate: event.target.value || undefined })}
+                />
+                <select
+                  className="rounded-md border border-forest-100 bg-rice px-3 py-3 text-lg font-bold"
+                  value={selectedSticky.color ?? "yellow"}
+                  onChange={(event) => updateSticky(selectedSticky.id, { color: event.target.value as StickyColor })}
+                >
+                  {colors.map((nextColor) => <option key={nextColor} value={nextColor}>{colorLabels[nextColor]}</option>)}
+                </select>
+                <select
+                  className="rounded-md border border-forest-100 bg-rice px-3 py-3 text-lg font-bold"
+                  value={selectedSticky.status}
+                  onChange={(event) => updateSticky(selectedSticky.id, { status: event.target.value as StickyStatus })}
+                >
+                  <option value="todo">??</option>
+                  <option value="doing">???</option>
+                  <option value="done">???</option>
+                  <option value="archived">???</option>
+                </select>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="mt-5 rounded-lg bg-rice p-4">
+              <p className="whitespace-pre-wrap break-words text-xl font-bold leading-relaxed text-ink">
+                {selectedSticky.content || selectedSticky.note || "??????"}
+              </p>
+              <div className="mt-4 grid gap-2 text-base font-black text-stone-700 sm:grid-cols-2">
+                <span>???{statusLabels[selectedSticky.status]}</span>
+                <span>???{selectedSticky.dueDate || "???"}</span>
+                <span>???{colorLabels[selectedSticky.color ?? "yellow"]}</span>
+                <span>???{selectedSticky.updatedAt}</span>
+              </div>
+            </div>
+          )}
 
           <div className="mt-5 grid gap-2 sm:grid-cols-2">
             <button className="rounded-md bg-blue-700 px-4 py-3 text-lg font-black text-white" type="button" onClick={() => updateSticky(selectedSticky.id, { status: "doing" })}>改為進行中</button>

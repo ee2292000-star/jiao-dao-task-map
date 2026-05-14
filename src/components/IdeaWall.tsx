@@ -152,7 +152,7 @@ function IdeaStickyNode({ data }: NodeProps<IdeaFlowNode>) {
 
   return (
     <div
-      className="nodrag nowheel w-64 cursor-grab text-left active:cursor-grabbing"
+      className="w-64 cursor-grab text-left active:cursor-grabbing"
       role="button"
       tabIndex={0}
       onClick={() => onSelect(idea.id)}
