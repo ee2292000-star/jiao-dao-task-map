@@ -331,18 +331,6 @@ export function MyWorkWall({ ownerId, ownerName, officialTasks = [] }: MyWorkWal
               key={sticky.id}
               className="absolute cursor-grab active:cursor-grabbing"
               style={{ left: sticky.x ?? 90, top: sticky.y ?? 90 }}
-              role="button"
-              tabIndex={0}
-              onClick={() => {
-                setSelectedId(sticky.id);
-                setEditingStickyId("");
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  setSelectedId(sticky.id);
-                  setEditingStickyId("");
-                }
-              }}
               onPointerDown={(event) => startDrag(event, sticky)}
               onPointerMove={moveDrag}
               onPointerUp={endDrag}
