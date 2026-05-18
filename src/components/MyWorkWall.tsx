@@ -336,12 +336,12 @@ export function MyWorkWall({ ownerId, ownerName, officialTasks = [] }: MyWorkWal
               onPointerUp={endDrag}
             >
               <StickyNoteCard
-                body={sticky.content || sticky.note || "??????"}
+                body={sticky.content || sticky.note || undefined}
                 category={statusLabels[sticky.status]}
                 footer={
                   <div className="flex flex-wrap gap-2">
                     {sticky.dueDate && <span>{sticky.dueDate}</span>}
-                    <span>?? {sticky.updatedAt}</span>
+                    <span>更新 {sticky.updatedAt}</span>
                   </div>
                 }
                 onEdit={() => {
@@ -440,23 +440,23 @@ export function MyWorkWall({ ownerId, ownerName, officialTasks = [] }: MyWorkWal
                   value={selectedSticky.status}
                   onChange={(event) => updateSticky(selectedSticky.id, { status: event.target.value as StickyStatus })}
                 >
-                  <option value="todo">??</option>
-                  <option value="doing">???</option>
-                  <option value="done">???</option>
-                  <option value="archived">???</option>
+                  <option value="todo">待辦</option>
+                  <option value="doing">進行中</option>
+                  <option value="done">已撕下</option>
+                  <option value="archived">封存</option>
                 </select>
               </div>
             </div>
           ) : (
             <div className="mt-5 rounded-lg bg-rice p-4">
               <p className="whitespace-pre-wrap break-words text-xl font-bold leading-relaxed text-ink">
-                {selectedSticky.content || selectedSticky.note || "??????"}
+                {selectedSticky.content || selectedSticky.note}
               </p>
               <div className="mt-4 grid gap-2 text-base font-black text-stone-700 sm:grid-cols-2">
-                <span>???{statusLabels[selectedSticky.status]}</span>
-                <span>???{selectedSticky.dueDate || "???"}</span>
-                <span>???{colorLabels[selectedSticky.color ?? "yellow"]}</span>
-                <span>???{selectedSticky.updatedAt}</span>
+                <span>狀態：{statusLabels[selectedSticky.status]}</span>
+                {selectedSticky.dueDate ? <span>期限：{selectedSticky.dueDate}</span> : null}
+                <span>顏色：{colorLabels[selectedSticky.color ?? "yellow"]}</span>
+                <span>更新：{selectedSticky.updatedAt}</span>
               </div>
             </div>
           )}
