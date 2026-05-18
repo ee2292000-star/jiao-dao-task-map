@@ -511,9 +511,9 @@ export function InspirationWall({ ownerId, ownerName, role, teachers = [], onCre
                 onPointerUp={endDrag}
               >
                 <StickyNoteCard
-                  body={note.content || "??????"}
-                  category="??"
-                  footer={<span>?? {note.updatedAt}</span>}
+                  body={note.content || undefined}
+                  category={colorLabels[note.color]}
+                  footer={note.updatedAt ? <span>更新 {note.updatedAt}</span> : undefined}
                   onEdit={() => {
                     setSelectedId(note.id);
                     setEditingNoteId(note.id);
@@ -561,19 +561,21 @@ export function InspirationWall({ ownerId, ownerName, role, teachers = [], onCre
                   {colors.map((nextColor) => <option key={nextColor} value={nextColor}>{colorLabels[nextColor]}</option>)}
                 </select>
                 <button className="rounded-md bg-stone-100 px-4 py-3 text-lg font-black text-stone-700" type="button" onClick={() => updateNote(selectedNote.id, { status: selectedNote.status === "archived" ? "active" : "archived" })}>
-                  {selectedNote.status === "archived" ? "??" : "??"}
+                  {selectedNote.status === "archived" ? "還原" : "封存"}
                 </button>
               </div>
             </div>
           ) : (
             <div className="mt-5 rounded-lg bg-rice p-4">
-              <p className="whitespace-pre-wrap break-words text-xl font-bold leading-relaxed text-ink">
-                {selectedNote.content || "??????"}
-              </p>
+              {selectedNote.content ? (
+                <p className="whitespace-pre-wrap break-words text-xl font-bold leading-relaxed text-ink">
+                  {selectedNote.content}
+                </p>
+              ) : null}
               <div className="mt-4 grid gap-2 text-base font-black text-stone-700 sm:grid-cols-2">
-                <span>???{colorLabels[selectedNote.color]}</span>
-                <span>???{selectedNote.status === "archived" ? "???" : "???"}</span>
-                <span>???{selectedNote.updatedAt}</span>
+                <span>顏色：{colorLabels[selectedNote.color]}</span>
+                <span>狀態：{selectedNote.status === "archived" ? "已封存" : "使用中"}</span>
+                {selectedNote.updatedAt ? <span>更新：{selectedNote.updatedAt}</span> : null}
               </div>
             </div>
           )}
